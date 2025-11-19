@@ -19,6 +19,17 @@
     box-sizing: border-box;
 }
 
+/* Text selection highlighting */
+::selection {
+    background-color: #3b82f6;
+    color: white;
+}
+
+::-moz-selection {
+    background-color: #3b82f6;
+    color: white;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

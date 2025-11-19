@@ -7,6 +7,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const resultsContainer = document.getElementById("resultsContainer");
     const advancedSearchToggle = document.getElementById("advancedSearchToggle");
     const advancedSearchInfo = document.getElementById("advancedSearchInfo");
+    const statisticsDashboard = document.getElementById("statisticsDashboard");
+    const statsContainer = document.getElementById("statsContainer");
+    const refreshStatsBtn = document.getElementById("refreshStatsBtn");
+    
+    // Load statistics on page load
+    loadStatistics();
+    
+    // Refresh button handler
+    if (refreshStatsBtn) {
+        refreshStatsBtn.addEventListener('click', loadStatistics);
+    }
     
     // Show/hide advanced search info
     if (advancedSearchToggle && advancedSearchInfo) {
@@ -51,6 +62,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function displaySearchResults(results, total, query) {
+        // Hide statistics dashboard when showing search results
+        if (statisticsDashboard) statisticsDashboard.style.display = 'none';
+        
         searchResults.style.display = 'block';
         resultCount.textContent = total;
 
@@ -410,5 +424,168 @@ document.addEventListener("DOMContentLoaded", () => {
     // Helper function to escape regex special characters
     function escapeRegex(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    // Load statistics function
+    async function loadStatistics() {
+        if (!statsContainer) return;
+        
+        statsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b; grid-column: 1 / -1;">Loading statistics...</div>';
+        
+        try {
+            const response = await fetch('/api/statistics');
+            const data = await response.json();
+            
+            if (!data.success) throw new Error(data.error || 'Failed to load statistics');
+            
+            displayStatistics(data.stats);
+        } catch (error) {
+            console.error('Error loading statistics:', error);
+            statsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #ef4444; grid-column: 1 / -1;">⚠️ Failed to load statistics</div>';
+        }
+    }
+    
+    function displayStatistics(stats) {
+        statsContainer.innerHTML = '';
+        
+        // Total Documents Card
+        const docsCard = createStatCard(
+            '📄',
+            'Total Documents',
+            stats.totalDocuments?.toLocaleString() || '0',
+            '#3b82f6'
+        );
+        statsContainer.appendChild(docsCard);
+        
+        // Total Devices Card
+        const devicesCard = createStatCard(
+            '📱',
+            'Total Devices',
+            stats.totalDevices?.toLocaleString() || '0',
+            '#10b981'
+        );
+        statsContainer.appendChild(devicesCard);
+        
+        // Total Indexes Card
+        const indexesCard = createStatCard(
+            '🗂️',
+            'Total Indexes',
+            stats.totalIndexes?.toLocaleString() || '0',
+            '#f59e0b'
+        );
+        statsContainer.appendChild(indexesCard);
+        
+        // Storage Size Card
+        const storageCard = createStatCard(
+            '💾',
+            'Total Storage',
+            formatBytes(stats.totalStorageBytes || 0),
+            '#8b5cf6'
+        );
+        statsContainer.appendChild(storageCard);
+        
+        // Recent Activity Card
+        if (stats.recentDocuments && stats.recentDocuments.length > 0) {
+            const activityCard = document.createElement('div');
+            activityCard.style.cssText = `
+                background: white;
+                border: 2px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 20px;
+                grid-column: 1 / -1;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            `;
+            
+            activityCard.innerHTML = `
+                <h4 style="margin: 0 0 16px 0; color: #475569; display: flex; align-items: center; gap: 8px;">
+                    <span>🕒</span> Recent Activity
+                </h4>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    ${stats.recentDocuments.slice(0, 5).map(doc => `
+                        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                            <span style="font-size: 1.5rem;">📄</span>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(doc.file_name || 'Unknown')}</div>
+                                <div style="font-size: 0.85rem; color: #64748b;">Device: ${escapeHtml(doc.device_id || 'Unknown')} • ${new Date(doc.timestamp).toLocaleDateString()}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            statsContainer.appendChild(activityCard);
+        }
+        
+        // Top Devices Card
+        if (stats.topDevices && stats.topDevices.length > 0) {
+            const topDevicesCard = document.createElement('div');
+            topDevicesCard.style.cssText = `
+                background: white;
+                border: 2px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 20px;
+                grid-column: 1 / -1;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            `;
+            
+            topDevicesCard.innerHTML = `
+                <h4 style="margin: 0 0 16px 0; color: #475569; display: flex; align-items: center; gap: 8px;">
+                    <span>📱</span> Top Devices by Document Count
+                </h4>
+                <div style="display: grid; gap: 8px;">
+                    ${stats.topDevices.slice(0, 5).map((device, index) => {
+                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+                        const color = colors[index % colors.length];
+                        return `
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="min-width: 30px; text-align: center; font-weight: 700; color: ${color};">#${index + 1}</div>
+                                <div style="flex: 1; background: #f8fafc; padding: 10px 16px; border-radius: 8px; border-left: 4px solid ${color};">
+                                    <div style="font-weight: 600; color: #1e293b;">${escapeHtml(device.device_id)}</div>
+                                    <div style="font-size: 0.85rem; color: #64748b;">${device.doc_count.toLocaleString()} documents</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            statsContainer.appendChild(topDevicesCard);
+        }
+    }
+    
+    function createStatCard(icon, label, value, color) {
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: linear-gradient(135deg, ${color} 0%, ${color}dd 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        `;
+        
+        card.innerHTML = `
+            <div style="font-size: 2.5rem; margin-bottom: 8px;">${icon}</div>
+            <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 4px;">${label}</div>
+            <div style="font-size: 2rem; font-weight: 700;">${value}</div>
+        `;
+        
+        card.addEventListener('mouseenter', () => {
+            card.style.transform = 'translateY(-4px)';
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = 'translateY(0)';
+        });
+        
+        return card;
+    }
+    
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 });

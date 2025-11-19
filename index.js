@@ -1034,12 +1034,12 @@ app.post('/api/search', async (req, res) => {
 
     let searchQuery;
     
-    // Check if advanced search is enabled and query looks like a phone number
+    // Check if advanced search is enabled
     if (advancedSearch) {
       const phoneVariations = generatePhoneVariations(query);
       
       if (phoneVariations && phoneVariations.length > 1) {
-        // Use bool query with should clauses for multiple variations
+        // Use bool query with should clauses for multiple variations (phone numbers)
         searchQuery = {
           index: index,
           body: {
@@ -1066,14 +1066,41 @@ app.post('/api/search', async (req, res) => {
         console.log(`Advanced search: Generated ${phoneVariations.length} variations for: ${query}`);
         console.log('Variations:', phoneVariations);
       } else {
-        // Fallback to normal search if not a phone number
+        // Advanced substring search - finds partial matches like "facebook" in "com.facebook.thing"
         searchQuery = {
           index: index,
           body: {
             query: {
-              multi_match: {
-                query: query,
-                fields: ['*']
+              bool: {
+                should: [
+                  // Exact phrase match (highest priority)
+                  {
+                    multi_match: {
+                      query: query,
+                      fields: ['*'],
+                      type: 'phrase',
+                      boost: 3
+                    }
+                  },
+                  // Standard word match
+                  {
+                    multi_match: {
+                      query: query,
+                      fields: ['*'],
+                      boost: 2
+                    }
+                  },
+                  // Wildcard search for substring matches (e.g., "facebook" in "com.facebook.thing")
+                  {
+                    query_string: {
+                      query: `*${query}*`,
+                      fields: ['*'],
+                      analyze_wildcard: true,
+                      boost: 1
+                    }
+                  }
+                ],
+                minimum_should_match: 1
               }
             },
             highlight: {
@@ -1084,6 +1111,8 @@ app.post('/api/search', async (req, res) => {
             size: 50
           }
         };
+        
+        console.log(`Advanced search with substring matching for: ${query}`);
       }
     } else {
       // Normal search
@@ -1141,6 +1170,123 @@ app.post('/api/search', async (req, res) => {
     });
   } catch (error) {
     console.error('Search error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API endpoint to get statistics
+app.get('/api/statistics', async (req, res) => {
+  try {
+    const indexName = selectedIndex || '_all';
+    
+    let totalDocuments = 0;
+    let totalDevices = 0;
+    let topDevices = [];
+    let recentDocuments = [];
+    let totalIndexes = 0;
+    let totalStorageBytes = 0;
+    
+    // Get list of indexes first
+    try {
+      const indicesResponse = await client.cat.indices({ format: 'json' });
+      const indices = indicesResponse.body || indicesResponse || [];
+      totalIndexes = indices.length;
+      
+      // Calculate total storage
+      indices.forEach(index => {
+        if (index['store.size']) {
+          const size = index['store.size'];
+          // Parse size string (e.g., "1.2mb", "500kb")
+          const match = size.match(/^([\d.]+)(kb|mb|gb|tb)?$/i);
+          if (match) {
+            const value = parseFloat(match[1]);
+            const unit = (match[2] || 'b').toLowerCase();
+            const multipliers = { b: 1, kb: 1024, mb: 1024*1024, gb: 1024*1024*1024, tb: 1024*1024*1024*1024 };
+            totalStorageBytes += value * (multipliers[unit] || 1);
+          }
+        }
+      });
+    } catch (err) {
+      console.log('Could not fetch indices:', err.message);
+    }
+    
+    // Only query documents if there are indexes
+    if (totalIndexes > 0) {
+      try {
+        // Get total document count
+        const countResponse = await client.count({
+          index: indexName
+        });
+        totalDocuments = countResponse.count || countResponse.body?.count || 0;
+      } catch (err) {
+        console.log('Could not count documents:', err.message);
+      }
+      
+      try {
+        // Get total devices
+        const devicesAgg = await client.search({
+          index: indexName,
+          body: {
+            size: 0,
+            aggs: {
+              unique_devices: {
+                cardinality: {
+                  field: 'device_id.keyword'
+                }
+              },
+              top_devices: {
+                terms: {
+                  field: 'device_id.keyword',
+                  size: 5,
+                  order: { _count: 'desc' }
+                }
+              }
+            }
+          }
+        });
+        
+        totalDevices = devicesAgg.aggregations?.unique_devices?.value || 
+                             devicesAgg.body?.aggregations?.unique_devices?.value || 0;
+        topDevices = devicesAgg.aggregations?.top_devices?.buckets || 
+                           devicesAgg.body?.aggregations?.top_devices?.buckets || [];
+      } catch (err) {
+        console.log('Could not fetch device stats:', err.message);
+      }
+      
+      try {
+        // Get recent documents
+        const recentResponse = await client.search({
+          index: indexName,
+          body: {
+            size: 5,
+            sort: [{ timestamp: { order: 'desc' } }],
+            _source: ['file_name', 'device_id', 'timestamp']
+          }
+        });
+        
+        const recentDocs = recentResponse.hits?.hits || recentResponse.body?.hits?.hits || [];
+        recentDocuments = recentDocs.map(hit => hit._source);
+      } catch (err) {
+        console.log('Could not fetch recent documents:', err.message);
+      }
+    }
+    
+    res.json({
+      success: true,
+      stats: {
+        totalDocuments,
+        totalDevices,
+        totalIndexes,
+        totalStorageBytes,
+        topDevices: topDevices.map(bucket => ({
+          device_id: bucket.key,
+          doc_count: bucket.doc_count
+        })),
+        recentDocuments
+      }
+    });
+  } catch (error) {
+    console.error('Statistics error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
