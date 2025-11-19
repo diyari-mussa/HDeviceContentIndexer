@@ -1,0 +1,384 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const uploadArea = document.getElementById('uploadArea');
+    const folderInput = document.getElementById('folderInput');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('progressBar');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const treeView = document.getElementById('treeView');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const ingestBtn = document.getElementById('ingestBtn');
+
+    let selectedFiles = new Set();
+    let currentTree = null;
+
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, preventDefaults);
+        document.body.addEventListener(eventName, preventDefaults);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // Handle drag and drop visual feedback
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, () => {
+            uploadArea.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, () => {
+            uploadArea.classList.remove('dragover');
+        });
+    });
+
+    // Handle dropped items
+    uploadArea.addEventListener('drop', (e) => {
+        const items = e.dataTransfer.items;
+        if (items.length > 0) {
+            const item = items[0];
+            const entry = item.webkitGetAsEntry();
+            if (entry && entry.isDirectory) {
+                processDirectory(entry);
+            } else {
+                showError('Please drop a folder, not a file.');
+            }
+        }
+    });
+
+    // Handle selected files through the input
+    folderInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            console.log('Files selected:', files.length);
+            const pathParts = files[0].webkitRelativePath.split('/');
+            const folderName = pathParts[0];
+            processFiles(files, folderName);
+        }
+    });
+
+    function showError(message) {
+        uploadStatus.textContent = `Error: ${message}`;
+        uploadStatus.style.color = '#dc3545';
+        uploadProgress.style.display = 'block';
+        setTimeout(() => {
+            uploadProgress.style.display = 'none';
+        }, 3000);
+    }
+
+    function updateProgress(percent) {
+        progressBar.style.width = `${percent}%`;
+        uploadStatus.textContent = `Uploading... ${percent}%`;
+    }
+
+    async function processDirectory(entry) {
+        try {
+            uploadProgress.style.display = 'block';
+            updateProgress(0);
+            
+            const tree = await readDirectory(entry);
+            const allFiles = [];
+            await collectFiles(entry, '', allFiles);
+            await uploadFiles(allFiles, tree, entry.name);
+            
+            uploadStatus.style.color = '#4CAF50';
+            updateProgress(100);
+            setTimeout(() => {
+                uploadProgress.style.display = 'none';
+            }, 3000);
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+
+    async function processFiles(files, folderName) {
+        try {
+            uploadProgress.style.display = 'block';
+            updateProgress(0);
+            
+            const tree = {};
+            buildTreeFromFiles(files, tree);
+            await uploadFiles(files, tree, folderName);
+            
+            uploadStatus.style.color = '#4CAF50';
+            updateProgress(100);
+            setTimeout(() => {
+                uploadProgress.style.display = 'none';
+            }, 3000);
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+
+    async function readDirectory(dirEntry) {
+        const tree = {};
+        const entries = await readEntries(dirEntry);
+        for (const entry of entries) {
+            if (entry.isDirectory) {
+                tree[entry.name] = await readDirectory(entry);
+            } else {
+                tree[entry.name] = null;
+            }
+        }
+        return tree;
+    }
+
+    function readEntries(dirEntry) {
+        return new Promise((resolve) => {
+            const entries = [];
+            const reader = dirEntry.createReader();
+            function read() {
+                reader.readEntries((results) => {
+                    if (results.length) {
+                        entries.push(...results);
+                        read();
+                    } else {
+                        resolve(entries);
+                    }
+                });
+            }
+            read();
+        });
+    }
+
+    function collectFiles(entry, path, allFiles) {
+        return new Promise((resolve) => {
+            if (entry.isFile) {
+                entry.file((file) => {
+                    file.relativePath = path + entry.name;
+                    allFiles.push(file);
+                    resolve();
+                });
+            } else if (entry.isDirectory) {
+                const dirReader = entry.createReader();
+                dirReader.readEntries(async (entries) => {
+                    const promises = entries.map(e => collectFiles(e, path + entry.name + '/', allFiles));
+                    await Promise.all(promises);
+                    resolve();
+                });
+            }
+        });
+    }
+
+    function buildTreeFromFiles(files, tree) {
+        files.forEach(file => {
+            const parts = file.webkitRelativePath.split('/').slice(1);
+            let current = tree;
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                if (i === parts.length - 1) {
+                    current[part] = null; // File
+                } else {
+                    if (!current[part]) {
+                        current[part] = {}; // Directory
+                    }
+                    current = current[part];
+                }
+            }
+        });
+    }
+
+    async function uploadFiles(files, tree, folderName) {
+        const formData = new FormData();
+        const relativePaths = [];
+
+        files.forEach(file => {
+            formData.append('files', file);
+            const relativePath = file.relativePath || file.webkitRelativePath.split('/').slice(1).join('/');
+            relativePaths.push(relativePath);
+        });
+
+        formData.append('folderName', folderName);
+        formData.append('relativePaths', JSON.stringify(relativePaths));
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.success) {
+                renderTree(data.tree);
+                uploadStatus.textContent = 'Upload complete!';
+            } else {
+                throw new Error(data.error || 'Upload failed');
+            }
+        } catch (error) {
+            throw new Error(`Upload failed: ${error.message}`);
+        }
+    }
+
+    function isAllowedFile(filename) {
+        const ext = filename.toLowerCase().split('.').pop();
+        return ['txt', 'html', 'css'].includes(ext);
+    }
+
+    function renderTree(tree) {
+        console.log('Rendering tree:', tree);
+        treeView.innerHTML = '';
+        currentTree = tree;
+        selectedFiles.clear();
+        createTreeElements(tree, treeView, '');
+        updateIngestButton();
+    }
+
+    function createTreeElements(tree, parentElement, path) {
+        if (!tree || typeof tree !== 'object') {
+            console.error('Invalid tree structure:', tree);
+            return;
+        }
+        
+        Object.entries(tree).forEach(([name, value]) => {
+            const item = document.createElement('div');
+            item.className = 'tree-item';
+            const currentPath = path ? `${path}/${name}` : name;
+
+            if (value === null) {
+                // File
+                if (isAllowedFile(name)) {
+                    // Simple direct markup for files
+                    item.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 4px;">
+                            <input type="checkbox" style="width: 16px; height: 16px; margin: 0;">
+                            <span style="font-size: 16px;">📄</span>
+                            <span>${name}</span>
+                        </div>
+                    `;
+                    
+                    const checkbox = item.querySelector('input[type="checkbox"]');
+                    checkbox.dataset.path = currentPath;
+                    
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) {
+                            selectedFiles.add(currentPath);
+                            item.style.backgroundColor = '#e8f5e9';
+                        } else {
+                            selectedFiles.delete(currentPath);
+                            item.style.backgroundColor = '';
+                        }
+                        updateIngestButton();
+                    });
+                    
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) {
+                            selectedFiles.add(currentPath);
+                            item.style.backgroundColor = '#e8f5e9';
+                        } else {
+                            selectedFiles.delete(currentPath);
+                            item.style.backgroundColor = '';
+                        }
+                        updateIngestButton();
+                    });
+                } else {
+                    // Non-allowed file
+                    const fileSpan = document.createElement('span');
+                    fileSpan.className = 'file';
+                    fileSpan.textContent = name;
+                    item.appendChild(fileSpan);
+                }
+            } else {
+                // Folder
+                const folderHeader = document.createElement('div');
+                folderHeader.className = 'tree-toggle';
+                folderHeader.innerHTML = `<span class="folder">${name}</span>`;
+
+                const content = document.createElement('div');
+                content.className = 'tree-content';
+                content.style.display = 'none';
+
+                item.appendChild(folderHeader);
+                item.appendChild(content);
+
+                createTreeElements(value, content, currentPath);
+
+                folderHeader.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    content.style.display = content.style.display === 'none' ? 'block' : 'none';
+                    folderHeader.classList.toggle('expanded');
+                });
+            }
+
+            parentElement.appendChild(item);
+        });
+    }
+
+    function updateIngestButton() {
+        ingestBtn.disabled = selectedFiles.size === 0;
+        ingestBtn.textContent = `Ingest Selected Files${selectedFiles.size ? ` (${selectedFiles.size})` : ''}`;
+    }
+
+    // Handle Select/Deselect All
+    selectAllBtn.addEventListener('click', () => {
+        const checkboxes = document.querySelectorAll('.file-checkbox');
+        checkboxes.forEach(checkbox => {
+            if (!checkbox.checked) {
+                checkbox.checked = true;
+                selectedFiles.add(checkbox.dataset.path);
+                checkbox.closest('.tree-item').classList.add('selected-file');
+            }
+        });
+        updateIngestButton();
+    });
+
+    deselectAllBtn.addEventListener('click', () => {
+        const checkboxes = document.querySelectorAll('.file-checkbox');
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                checkbox.checked = false;
+                selectedFiles.delete(checkbox.dataset.path);
+                checkbox.closest('.tree-item').classList.remove('selected-file');
+            }
+        });
+        updateIngestButton();
+    });
+
+    // Handle Ingest
+    ingestBtn.addEventListener('click', async () => {
+        if (selectedFiles.size === 0) return;
+
+        try {
+            ingestBtn.disabled = true;
+            uploadStatus.textContent = 'Ingesting files...';
+            uploadProgress.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            const response = await fetch('/ingest', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    files: Array.from(selectedFiles)
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                uploadStatus.textContent = 'Files successfully ingested!';
+                progressBar.style.width = '100%';
+                uploadStatus.style.color = '#4CAF50';
+                // Clear selections after successful ingestion
+                deselectAllBtn.click();
+            } else {
+                throw new Error(data.error || 'Ingestion failed');
+            }
+        } catch (error) {
+            uploadStatus.textContent = `Ingestion failed: ${error.message}`;
+            uploadStatus.style.color = '#dc3545';
+        } finally {
+            setTimeout(() => {
+                uploadProgress.style.display = 'none';
+                ingestBtn.disabled = selectedFiles.size === 0;
+            }, 3000);
+        }
+    });
+});

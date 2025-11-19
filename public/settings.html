@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Directory Search Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h1>⚙️ <span class="gradient-text">Elasticsearch Settings</span></h1>
+            <div style="display: flex; gap: 12px;">
+                <a href="index.html" class="control-btn" style="text-decoration: none;">🔍 Search</a>
+                <a href="upload.html" class="control-btn" style="text-decoration: none;">📤 Upload</a>
+            </div>
+        </div>
+
+        <div style="background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%); border: 2px solid #c7d2fe; border-radius: 12px; padding: 16px; margin-bottom: 2rem; display: flex; align-items: center; gap: 12px;">
+            <div id="esStatus" style="display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:8px; background:linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border:2px solid #cbd5e1;">
+                <div class="status-dot" style="width:10px; height:10px; border-radius:50%; background:#f59e0b;"></div>
+                <span class="status-text" style="font-weight:600; color:#475569; font-size:0.9rem;">Checking connection...</span>
+            </div>
+            <div id="startEsContainer" style="display:none; flex: 1;">
+                <button id="startElasticsearchBtn" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; font-size:0.95rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1)'">▶️ Start Elasticsearch</button>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 2rem;">
+            <!-- Left Column: Indices Management -->
+            <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0;">
+                <h2 style="color:#1e293b; font-size:1.4rem; margin-bottom:20px; font-weight:600; display: flex; align-items: center; gap: 8px;">
+                    📋 Index Management
+                </h2>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 8px; font-size: 0.95rem;">Create New Index</label>
+                    <div style="display:flex; gap:8px;">
+                        <input id="newIndexName" placeholder="new-index-name" style="flex:1; padding:10px 14px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; transition:all 0.2s;" onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#e2e8f0'">
+                        <button id="createIndexBtn" class="control-btn" style="margin:0; background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; border:none; font-weight:600; padding: 10px 20px;">➕ Create</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 12px; font-size: 0.95rem;">Available Indices</label>
+                    <div id="indicesList" style="border:2px solid #e2e8f0; border-radius:8px; background:#fafbfc; max-height: 400px; overflow-y: auto;">
+                        <div style="padding:40px; text-align:center; color:#64748b;">Loading indices...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Index Preview -->
+            <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0;">
+                <h2 style="color:#1e293b; font-size:1.4rem; margin-bottom:20px; font-weight:600; display: flex; align-items: center; gap: 8px;">
+                    📄 Index Preview
+                    <span id="selectedIndexName" style="font-size: 0.9rem; color: #2563eb; font-weight: 700;"></span>
+                </h2>
+
+                <div id="indexDocs" style="border:2px solid #e2e8f0; border-radius:8px; padding:16px; max-height:600px; overflow:auto; background:#fafbfc;">
+                    <div style="text-align:center; padding:40px; color:#64748b;">
+                        <div style="font-size:64px; margin-bottom:12px;">📊</div>
+                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">Select an index to preview</div>
+                        <div style="font-size: 0.9rem;">Choose an index from the left panel to view its documents</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 2px solid #e2e8f0;">
+            <h2 style="color:#1e293b; font-size:1.4rem; margin-bottom:16px; font-weight:600; display: flex; align-items: center; gap: 8px;">
+                🎯 Selected Index for Uploads
+            </h2>
+            <div style="display: flex; align-items: center; gap: 16px; padding: 16px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px; border: 2px solid #60a5fa;">
+                <div style="flex: 1;">
+                    <div style="font-size: 0.85rem; color: #1e40af; margin-bottom: 4px;">Current Selected Index:</div>
+                    <div id="currentSelectedIndex" style="font-size: 1.2rem; font-weight: 700; color: #1e3a8a;">None</div>
+                </div>
+                <button id="confirmIndexBtn" class="control-btn" style="margin:0; padding:12px 28px; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:white; border:none; font-weight:600; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); font-size: 1rem;" disabled>✓ Use This Index</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="settings.js"></script>
+</body>
+</html>

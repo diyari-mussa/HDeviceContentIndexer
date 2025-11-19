@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Files Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📤 <span class="gradient-text">Upload Files Dashboard</span></h1>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap: wrap;">
+            <a href="index.html" class="control-btn" style="text-decoration: none;">🔍 Search</a>
+            <a href="devices.html" class="control-btn" style="text-decoration: none;">📱 Devices</a>
+            <a href="settings.html" class="control-btn" style="text-decoration: none;">⚙️ Settings</a>
+            <button id="openChecksumsBtn" class="control-btn">🔐 Checksums History</button>
+            <div style="flex: 1; min-width: 200px;">
+                <span style="color: #64748b; font-size: 0.9rem;">Selected index:</span>
+                <strong id="selectedIndexDisplay" style="color: #2563eb;">(none)</strong>
+            </div>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="folderInput" webkitdirectory directory multiple />
+                <div class="upload-content">
+                    <p>Drag and drop a folder here</p>
+                    <p>or</p>
+                    <label for="folderInput" class="upload-btn">Choose Folder</label>
+                </div>
+            </div>
+            <div class="upload-progress" id="uploadProgress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress" id="progressBar"></div>
+                </div>
+                <span id="uploadStatus"></span>
+            </div>
+        </div>
+        <div class="tree-section">
+            <h2>Directory Structure</h2>
+            <div class="tree-container">
+                <div id="treeView" class="tree-view"></div>
+            </div>
+            <div class="ingest-controls">
+                <div class="select-controls">
+                    <button id="selectAllBtn" class="control-btn">Select All</button>
+                    <button id="deselectAllBtn" class="control-btn">Deselect All</button>
+                </div>
+                <button id="ingestBtn" class="ingest-btn" disabled>Ingest Selected Files</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checksums Modal -->
+    <div id="checksumsModal" class="modal" style="display:none;">
+        <div style="background:#fff; padding:24px; width:900px; max-width:95%; max-height:85%; overflow:auto; border-radius:12px; box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0;">🔐 Uploaded Folder Checksums</h2>
+                <button id="refreshChecksumsBtn" class="control-btn" style="margin:0;">🔄 Refresh</button>
+            </div>
+            <p style="color: #64748b; margin-bottom: 20px;">
+                This list shows all folders that have been uploaded and indexed. Each folder has a unique checksum to prevent duplicate uploads.
+            </p>
+            <div id="checksumsContent" style="border:1px solid #e2e8f0; border-radius:8px; padding:16px; max-height:500px; overflow:auto; background: #fafbfc;">
+                <div style="text-align:center; padding:20px; color:#64748b;">Loading checksums...</div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+                <button id="closeChecksumsBtn" class="control-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings modal -->
+    <div id="settingsModal" class="modal" style="display:none;">
+        <div style="background:#fff; padding:28px; width:900px; max-width:95%; max-height:85%; overflow:auto; border-radius:12px; box-sizing:border-box; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h2 style="margin:0; font-size:1.75rem; color:#1e293b; font-weight:700;">⚙️ Elasticsearch Index Settings</h2>
+                <div id="esStatus" style="display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:8px; background:linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border:2px solid #cbd5e1;">
+                    <div class="status-dot" style="width:10px; height:10px; border-radius:50%; background:#f59e0b;"></div>
+                    <span class="status-text" style="font-weight:600; color:#475569; font-size:0.9rem;">Checking connection...</span>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:300px;">
+                    <h3 style="color:#1e293b; font-size:1.2rem; margin-bottom:16px; font-weight:600;">📋 Indices</h3>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <input id="newIndexName" placeholder="new-index-name" style="flex:1; padding:10px 14px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; transition:all 0.2s;" onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#e2e8f0'">
+                        <button id="createIndexBtn" class="control-btn" style="margin:0; background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; border:none; font-weight:600;">➕ Create</button>
+                        <button id="deleteIndexBtn" class="control-btn" style="margin:0; background:linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color:white; border:none; font-weight:600;" disabled>🗑️ Delete</button>
+                    </div>
+                    <div id="startEsContainer" style="display:none; margin-bottom:12px;">
+                        <button id="startElasticsearchBtn" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; border:none; padding:12px; border-radius:8px; width:100%; cursor:pointer; font-weight:600; font-size:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1)'">▶️ Start Elasticsearch</button>
+                    </div>
+                    <ul id="indicesList" style="list-style:none; padding:0; max-height:400px; overflow:auto; border:2px solid #e2e8f0; border-radius:8px; background:#fafbfc;"></ul>
+                </div>
+                <div style="flex:2; min-width:300px;">
+                    <h3 style="color:#1e293b; font-size:1.2rem; margin-bottom:16px; font-weight:600;">📄 Index Preview (10 documents)</h3>
+                    <div id="indexDocs" style="border:2px solid #e2e8f0; border-radius:8px; padding:16px; max-height:420px; overflow:auto; background:#fafbfc;"></div>
+                </div>
+            </div>
+            
+            <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px; padding-top:20px; border-top:2px solid #e2e8f0;">
+                <button id="closeSettingsBtn" class="control-btn" style="margin:0; padding:10px 20px;">Close</button>
+                <button id="confirmIndexBtn" class="control-btn" style="margin:0; padding:10px 24px; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:white; border:none; font-weight:600; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);" disabled>✓ Use Selected Index</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="upload.js"></script>
+</body>
+</html>

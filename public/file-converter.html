@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Converter Preview</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .converter-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .converter-section {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .file-upload {
+            margin-bottom: 20px;
+        }
+        .file-input {
+            margin-bottom: 10px;
+        }
+        .preview-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .preview-panel {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .preview-panel h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .content-display {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+        .markdown-content {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .convert-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        .convert-btn:hover {
+            background: #0056b3;
+        }
+        .convert-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .file-info {
+            margin-bottom: 10px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="converter-container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h1>🔄 File Converter Preview</h1>
+            <div style="display: flex; gap: 12px;">
+                <a href="index.html" class="control-btn" style="text-decoration: none;">🔍 Search</a>
+                <a href="upload.html" class="control-btn" style="text-decoration: none;">📤 Upload</a>
+                <a href="settings.html" class="control-btn" style="text-decoration: none;">⚙️ Settings</a>
+            </div>
+        </div>
+        <p>Upload PDF or HTML files to see how they will be converted to Markdown format before ingestion. CSV and text files are processed as-is.</p>
+
+        <div class="converter-section">
+            <h2>File Upload</h2>
+            <div class="file-upload">
+                <input type="file" id="fileInput" class="file-input" accept=".pdf,.html,.htm">
+                <div class="file-info" id="fileInfo">No file selected</div>
+                <button id="convertBtn" class="convert-btn" disabled>Convert to Markdown</button>
+            </div>
+        </div>
+
+        <div class="preview-section">
+            <div class="preview-panel">
+                <h3>Original File Content</h3>
+                <div class="content-display" id="originalContent">Upload a file to see the original content here...</div>
+            </div>
+            <div class="preview-panel">
+                <h3>Markdown Conversion</h3>
+                <div class="markdown-content" id="markdownContent">Converted Markdown will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const convertBtn = document.getElementById('convertBtn');
+        const originalContent = document.getElementById('originalContent');
+        const markdownContent = document.getElementById('markdownContent');
+
+        let selectedFile = null;
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                fileInfo.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                convertBtn.disabled = false;
+                originalContent.textContent = 'File selected. Click "Convert to Markdown" to preview.';
+                markdownContent.textContent = 'Waiting for conversion...';
+            } else {
+                selectedFile = null;
+                fileInfo.textContent = 'No file selected';
+                convertBtn.disabled = true;
+                originalContent.textContent = 'Upload a file to see the original content here...';
+                markdownContent.textContent = 'Converted Markdown will appear here...';
+            }
+        });
+
+        convertBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            convertBtn.disabled = true;
+            convertBtn.textContent = 'Converting...';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+
+                const response = await fetch('/api/convert-file', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+
+                    // Display original content (truncated for large files)
+                    if (result.originalContent) {
+                        originalContent.textContent = result.originalContent.length > 2000
+                            ? result.originalContent.substring(0, 2000) + '\n\n[...content truncated...]'
+                            : result.originalContent;
+                    }
+
+                    // Display converted markdown
+                    markdownContent.innerHTML = result.markdownContent
+                        .replace(/\n/g, '<br>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/`(.*?)`/g, '<code>$1</code>')
+                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                        .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+                        .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+                        .replace(/^### (.*$)/gm, '<h3>$1</h3>');
+
+                } else {
+                    throw new Error('Conversion failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                originalContent.textContent = 'Error loading file content';
+                markdownContent.textContent = 'Error during conversion: ' + error.message;
+            } finally {
+                convertBtn.disabled = false;
+                convertBtn.textContent = 'Convert to Markdown';
+            }
+        });
+    </script>
+</body>
+</html>
