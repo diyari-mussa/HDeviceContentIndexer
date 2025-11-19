@@ -40,7 +40,7 @@ View all indexed devices, manage files, and cleanup storage.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/HDeviceContentIndexer.git
+   git clone https://github.com/diyari-mussa/HDeviceContentIndexer.git
    cd HDeviceContentIndexer
    ```
 
@@ -255,7 +255,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-Project Link: [https://github.com/yourusername/HDeviceContentIndexer](https://github.com/yourusername/HDeviceContentIndexer)
+Project Link: [https://github.com/diyari-mussa/HDeviceContentIndexer](https://github.com/diyari-mussa/HDeviceContentIndexer)
 
 ---
 
