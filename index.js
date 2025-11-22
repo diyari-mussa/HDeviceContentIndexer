@@ -31,16 +31,17 @@ function loadChecksums() {
   }
 }
 
-function saveChecksum(folderHash, deviceId, folderName) {
+function saveChecksum(folderHash, deviceId, folderName, indexName) {
   try {
     const checksums = loadChecksums();
-    const key = `${folderHash}:${deviceId}`;
+    const key = `${folderHash}:${deviceId}:${indexName}`;
 
     if (!checksums.has(key)) {
       checksums.set(key, {
         hash: folderHash,
         deviceId,
         folderName,
+        indexName,
         timestamp: new Date().toISOString()
       });
 
@@ -51,16 +52,16 @@ function saveChecksum(folderHash, deviceId, folderName) {
       }
 
       fs.writeFileSync(CHECKSUM_FILE, JSON.stringify(checksumsObj, null, 2));
-      console.log(`Saved checksum for folder: ${folderName} (${deviceId})`);
+      console.log(`Saved checksum for folder: ${folderName} in index ${indexName} (${deviceId})`);
     }
   } catch (error) {
     console.error('Error saving checksum:', error);
   }
 }
 
-function isFolderAlreadyProcessed(folderHash, deviceId) {
+function isFolderAlreadyProcessed(folderHash, deviceId, indexName) {
   const checksums = loadChecksums();
-  const key = `${folderHash}:${deviceId}`;
+  const key = `${folderHash}:${deviceId}:${indexName}`;
   const exists = checksums.has(key);
   console.log(`🔍 Checking checksum file: key="${key}", exists=${exists}`);
   if (exists) {
@@ -82,6 +83,39 @@ const client = new Client({
   maxRetries: 5,
   requestTimeout: 30000
 });
+
+// Clean up orphaned temp folders on startup
+function cleanupTempFolders() {
+  try {
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) return;
+    
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    let cleanedCount = 0;
+    
+    entries.forEach(entry => {
+      if (entry.isDirectory() && entry.name.startsWith('temp-')) {
+        const tempPath = path.join(uploadsDir, entry.name);
+        try {
+          fs.rmSync(tempPath, { recursive: true, force: true });
+          cleanedCount++;
+          console.log(`🧹 Cleaned up orphaned temp folder: ${entry.name}`);
+        } catch (err) {
+          console.error(`❌ Failed to clean temp folder ${entry.name}:`, err.message);
+        }
+      }
+    });
+    
+    if (cleanedCount > 0) {
+      console.log(`✅ Cleaned up ${cleanedCount} temp folder(s)`);
+    }
+  } catch (error) {
+    console.error('Error during temp folder cleanup:', error);
+  }
+}
+
+// Run cleanup on startup
+cleanupTempFolders();
 
 // Middleware
 app.use(express.json());
@@ -197,7 +231,7 @@ function getAllFiles(dirPath, arrayOfFiles) {
 // Function to check if file extension is allowed
 function isAllowedFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  return ['.html', '.htm', '.txt', '.css', '.pdf', '.csv', '.info'].includes(ext);
+  return ['.html', '.htm', '.txt', '.csv'].includes(ext);
 }
 
 // Function to read file content
@@ -266,18 +300,18 @@ function calculateFolderHash(dirPath) {
   return finalHash;
 }
 
-// Function to check if folder already exists in ANY index
+// Function to check if folder already exists in SPECIFIC index
 async function checkFolderExists(indexName, folderHash, deviceId) {
   try {
-    // FIRST: Check the local checksum file (most reliable)
-    if (isFolderAlreadyProcessed(folderHash, deviceId)) {
-      console.log(`Found folder in checksums file: hash=${folderHash}, device=${deviceId}`);
+    // FIRST: Check the local checksum file for this specific index
+    if (isFolderAlreadyProcessed(folderHash, deviceId, indexName)) {
+      console.log(`Found folder in checksums file: hash=${folderHash}, device=${deviceId}, index=${indexName}`);
       return true;
     }
 
-    // SECOND: Check ALL indices for this folder hash and device ID combination
+    // SECOND: Check the SPECIFIC index for this folder hash and device ID combination
     const hashResponse = await client.search({
-      index: '_all', // Search across all indices
+      index: indexName,
       body: {
         query: {
           bool: {
@@ -292,24 +326,7 @@ async function checkFolderExists(indexName, folderHash, deviceId) {
     });
 
     if (hashResponse.hits?.hits?.length > 0) {
-      console.log(`Found exact folder hash match for device ${deviceId} in another index`);
-      return true;
-    }
-
-    // THIRD: Also check if this specific device_id has been uploaded before in ANY index
-    const deviceResponse = await client.search({
-      index: '_all', // Search across all indices
-      body: {
-        query: {
-          term: { device_id: deviceId }
-        },
-        size: 1
-      }
-    });
-
-    const deviceHits = deviceResponse.hits?.hits || [];
-    if (deviceHits.length > 0) {
-      console.log(`Found existing documents for device ${deviceId} in another index, blocking duplicate upload`);
+      console.log(`Found exact folder hash match for device ${deviceId} in index ${indexName}`);
       return true;
     }
 
@@ -317,7 +334,7 @@ async function checkFolderExists(indexName, folderHash, deviceId) {
   } catch (error) {
     console.warn('Error checking folder existence:', error);
     // If Elasticsearch check fails, at least check the checksum file
-    return isFolderAlreadyProcessed(folderHash, deviceId);
+    return isFolderAlreadyProcessed(folderHash, deviceId, indexName);
   }
 }
 
@@ -424,6 +441,31 @@ async function indexDirectory(dirPath, dirName) {
 // Endpoint to upload folder
 app.post('/upload', upload.array('files'), async (req, res) => {
   try {
+    // Check if an index is selected and exists
+    if (!selectedIndex) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No index selected. Please create or select an index first.' 
+      });
+    }
+
+    // Verify the selected index exists
+    try {
+      const indexExists = await client.indices.exists({ index: selectedIndex });
+      if (!indexExists) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Index "${selectedIndex}" does not exist. Please create an index first.` 
+        });
+      }
+    } catch (error) {
+      console.error('Error checking index existence:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to verify index existence: ' + error.message 
+      });
+    }
+
     const { tree, folderName, relativePaths: relativePathsStr } = req.body;
     const relativePaths = JSON.parse(relativePathsStr || '[]');
     
@@ -545,6 +587,31 @@ app.get('/', (req, res) => {
 // Ingest endpoint for Elasticsearch with progress tracking
 app.post('/ingest', async (req, res) => {
   try {
+    // Check if an index is selected and exists
+    if (!selectedIndex) {
+      return res.json({ 
+        success: false, 
+        error: 'No index selected. Please create or select an index first.' 
+      });
+    }
+
+    // Verify the selected index exists
+    try {
+      const indexExists = await client.indices.exists({ index: selectedIndex });
+      if (!indexExists) {
+        return res.json({ 
+          success: false, 
+          error: `Index "${selectedIndex}" does not exist. Please create an index first.` 
+        });
+      }
+    } catch (error) {
+      console.error('Error checking index existence:', error);
+      return res.json({ 
+        success: false, 
+        error: 'Failed to verify index existence: ' + error.message 
+      });
+    }
+
     const { files } = req.body;
     if (!files || !Array.isArray(files) || files.length === 0) {
       return res.json({ success: false, error: 'No files selected for ingestion' });
@@ -575,28 +642,9 @@ app.post('/ingest', async (req, res) => {
     }
 
     // Process each file
-    const indexName = selectedIndex || 'directory-index';
+    const indexName = selectedIndex;
 
-    // Ensure the index exists before indexing documents
-    try {
-      const indexExists = await client.indices.exists({ index: indexName });
-      if (!indexExists) {
-        await client.indices.create({ index: indexName });
-        console.log(`Created index: ${indexName}`);
-      }
-    } catch (error) {
-      console.error('Error ensuring index exists:', error);
-      if (progressCallback) {
-        progressCallback(`Error creating index: ${error.message}`, 0, totalFiles);
-      }
-      // Return early if we can't create the index
-      if (progressCallback) {
-        res.end();
-      } else {
-        return res.json({ success: false, error: 'Failed to create index: ' + error.message });
-      }
-      return;
-    }
+    // Index should already exist at this point (checked earlier)
 
     // Calculate folder hash for duplicate detection - use the specific device folder
     let folderPath = path.join(__dirname, 'uploads');
@@ -630,17 +678,17 @@ app.post('/ingest', async (req, res) => {
     console.log('Extracted device ID:', deviceId);
     console.log('Using folder name for checksum:', folderName);
 
-    // Check CSV file first for faster lookup
-    const alreadyProcessed = isFolderAlreadyProcessed(folderHash, deviceId);
+    // Check CSV file first for faster lookup - now index-specific
+    const alreadyProcessed = isFolderAlreadyProcessed(folderHash, deviceId, indexName);
     if (alreadyProcessed) {
-      console.log('Folder already processed according to checksum file, skipping ingestion');
+      console.log(`Folder already processed in index ${indexName} according to checksum file, skipping ingestion`);
       if (progressCallback) {
-        progressCallback('Folder already processed - skipping', totalFiles, totalFiles);
+        progressCallback(`Folder already processed in ${indexName} - skipping`, totalFiles, totalFiles);
         res.end();
       } else {
         res.json({
           success: false,
-          error: 'This folder has already been processed. Duplicate folders are not allowed.'
+          error: `This folder has already been processed in index "${indexName}". Duplicate folders are not allowed in the same index.`
         });
       }
       return;
@@ -697,9 +745,9 @@ app.post('/ingest', async (req, res) => {
       }
     }
 
-    // Save checksum to JSON file AFTER successful ingestion
-    saveChecksum(folderHash, deviceId, folderName);
-    console.log(`✅ Checksum saved for folder: ${folderName} (${deviceId})`);
+    // Save checksum to JSON file AFTER successful ingestion - now index-specific
+    saveChecksum(folderHash, deviceId, folderName, indexName);
+    console.log(`✅ Checksum saved for folder: ${folderName} (${deviceId}) in index ${indexName}`);
 
     const endTime = Date.now();
     const duration = (endTime - startTime) / 1000;
@@ -1529,6 +1577,384 @@ app.delete('/api/checksums/:key', (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// API endpoint to clean up temp folders manually
+app.post('/api/cleanup-temp', (req, res) => {
+  try {
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({ success: true, cleaned: 0, message: 'No uploads folder found' });
+    }
+    
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    let cleanedCount = 0;
+    const cleanedFolders = [];
+    
+    entries.forEach(entry => {
+      if (entry.isDirectory() && entry.name.startsWith('temp-')) {
+        const tempPath = path.join(uploadsDir, entry.name);
+        try {
+          fs.rmSync(tempPath, { recursive: true, force: true });
+          cleanedCount++;
+          cleanedFolders.push(entry.name);
+          console.log(`🧹 Cleaned up temp folder: ${entry.name}`);
+        } catch (err) {
+          console.error(`❌ Failed to clean temp folder ${entry.name}:`, err.message);
+        }
+      }
+    });
+    
+    res.json({ 
+      success: true, 
+      cleaned: cleanedCount, 
+      folders: cleanedFolders,
+      message: `Cleaned up ${cleanedCount} temp folder(s)` 
+    });
+  } catch (error) {
+    console.error('Error cleaning temp folders:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Crawler API - Scan uploads folder for device folders
+app.post('/api/crawler/scan', async (req, res) => {
+  try {
+    // Check if an index is selected (needed to check if folders are already indexed)
+    if (!selectedIndex) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No index selected. Please create or select an index first to scan folders.' 
+      });
+    }
+
+    const { forceReindex } = req.body;
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({ success: true, folders: [] });
+    }
+
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    const folders = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        // Skip temp folders created during upload process
+        if (entry.name.startsWith('temp-')) {
+          console.log(`⏭️ Skipping temp folder: ${entry.name}`);
+          continue;
+        }
+        
+        const folderPath = path.join(uploadsDir, entry.name);
+        
+        // Calculate folder hash - deviceId is the folder name itself
+        const deviceId = entry.name;
+        const folderHash = calculateFolderHash(folderPath);
+        
+        // Check if already processed in the SELECTED index (unless force reindex is enabled)
+        const alreadyExists = forceReindex ? false : isFolderAlreadyProcessed(folderHash, deviceId, selectedIndex);
+        
+        // Count files
+        let fileCount = 0;
+        const countFiles = (dir) => {
+          const items = fs.readdirSync(dir, { withFileTypes: true });
+          items.forEach(item => {
+            if (item.isDirectory()) {
+              countFiles(path.join(dir, item.name));
+            } else {
+              fileCount++;
+            }
+          });
+        };
+        countFiles(folderPath);
+
+        folders.push({
+          name: entry.name,
+          path: folderPath,
+          folderHash,
+          deviceId,
+          alreadyExists,
+          fileCount
+        });
+      }
+    }
+
+    res.json({ success: true, folders });
+  } catch (error) {
+    console.error('Error scanning uploads folder:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Crawler API - Crawl and ingest selected folders
+app.post('/api/crawler/crawl', async (req, res) => {
+  const { folders } = req.body;
+
+  if (!folders || folders.length === 0) {
+    return res.status(400).json({ success: false, error: 'No folders provided' });
+  }
+
+  // Check if an index is selected and exists
+  if (!selectedIndex) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'No index selected. Please create or select an index first.' 
+    });
+  }
+
+  // Verify the selected index exists
+  try {
+    const indexExists = await client.indices.exists({ index: selectedIndex });
+    if (!indexExists) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Index "${selectedIndex}" does not exist. Please create an index first.` 
+      });
+    }
+  } catch (error) {
+    console.error('Error checking index existence:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to verify index existence: ' + error.message 
+    });
+  }
+
+  // Set headers for SSE (Server-Sent Events)
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sendProgress = (progress, message, detail = null) => {
+    const data = { progress, message };
+    if (detail) data.detail = detail;
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const totalFolders = folders.length;
+    let processedFolders = 0;
+
+    for (const folder of folders) {
+      const folderName = folder.name;
+      const folderPath = folder.path;
+
+      sendProgress(
+        Math.round((processedFolders / totalFolders) * 100),
+        `Processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+        `📁 Starting: ${folderName}`
+      );
+
+      try {
+        // Get all files from the folder
+        const allFiles = [];
+        const getAllFiles = (dir, basePath = '') => {
+          const items = fs.readdirSync(dir, { withFileTypes: true });
+          items.forEach(item => {
+            const fullPath = path.join(dir, item.name);
+            const relativePath = path.join(basePath, item.name);
+            
+            if (item.isDirectory()) {
+              getAllFiles(fullPath, relativePath);
+            } else {
+              allFiles.push({ fullPath, relativePath });
+            }
+          });
+        };
+        getAllFiles(folderPath);
+
+        sendProgress(
+          Math.round((processedFolders / totalFolders) * 100),
+          `Processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+          `Found ${allFiles.length} files in ${folderName}`
+        );
+
+        // Filter only allowed files
+        const allowedFiles = allFiles.filter(file => {
+          const ext = path.extname(file.fullPath).toLowerCase();
+          const isAllowed = isAllowedFile(file.fullPath);
+          if (!isAllowed && allFiles.length < 20) {
+            // Debug: log first few rejected files
+            console.log(`  ⏭️ Skipping ${file.relativePath} (ext: ${ext})`);
+          }
+          return isAllowed;
+        });
+
+        console.log(`📊 Folder ${folderName}: ${allFiles.length} total files, ${allowedFiles.length} allowed (.html/.txt/.csv)`);
+
+        sendProgress(
+          Math.round((processedFolders / totalFolders) * 100),
+          `Processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+          `Ingesting ${allowedFiles.length} allowed files from ${folderName}`
+        );
+
+        // Ingest files
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (let i = 0; i < allowedFiles.length; i++) {
+          const file = allowedFiles[i];
+          try {
+            await ingestSingleFile(file.fullPath, file.relativePath, folder.deviceId, folder.folderHash);
+            successCount++;
+            
+            // Send progress every 10 files or on last file
+            if ((i + 1) % 10 === 0 || i === allowedFiles.length - 1) {
+              sendProgress(
+                Math.round((processedFolders / totalFolders) * 100),
+                `Processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+                `✅ Ingested ${successCount}/${allowedFiles.length} files`
+              );
+            }
+          } catch (err) {
+            errorCount++;
+            sendProgress(
+              Math.round((processedFolders / totalFolders) * 100),
+              `Processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+              `❌ Error ingesting ${file.relativePath}: ${err.message}`
+            );
+          }
+        }
+
+        // Save checksum after successful ingestion - now index-specific
+        if (successCount > 0) {
+          saveChecksum(folder.folderHash, folder.deviceId, folderName, selectedIndex);
+          sendProgress(
+            Math.round(((processedFolders + 1) / totalFolders) * 100),
+            `Completed folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+            `✅ Completed: ${folderName} (${successCount} files ingested, ${errorCount} errors)`
+          );
+        } else {
+          sendProgress(
+            Math.round(((processedFolders + 1) / totalFolders) * 100),
+            `Completed folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+            `⚠️ No files ingested from ${folderName}`
+          );
+        }
+
+      } catch (err) {
+        sendProgress(
+          Math.round(((processedFolders + 1) / totalFolders) * 100),
+          `Error processing folder ${processedFolders + 1}/${totalFolders}: ${folderName}`,
+          `❌ Folder error: ${err.message}`
+        );
+      }
+
+      processedFolders++;
+    }
+
+    sendProgress(100, '✅ All folders processed successfully!', '🎉 Crawling completed!');
+    res.end();
+
+  } catch (error) {
+    console.error('Crawler error:', error);
+    sendProgress(0, '❌ Crawler error: ' + error.message, null);
+    res.end();
+  }
+});
+
+// Helper function to ingest a single file
+async function ingestSingleFile(filePath, relativePath, deviceId, folderHash) {
+  const ext = path.extname(filePath).toLowerCase();
+  let content = '';
+  let htmlContent = '';
+
+  // Get selected index - should always be set by now (checked in endpoint)
+  const indexToUse = selectedIndex;
+
+  try {
+    if (ext === '.txt') {
+      content = fs.readFileSync(filePath, 'utf8');
+    } else if (ext === '.html' || ext === '.htm') {
+      try {
+        htmlContent = fs.readFileSync(filePath, 'utf8'); // Store original HTML
+        const extractedText = convertHtmlToText(filePath); // Extract searchable text
+        content = extractedText || htmlContent; // Fallback to raw HTML if extraction fails
+      } catch (htmlError) {
+        console.error(`Error processing HTML file ${filePath}:`, htmlError.message);
+        // Fallback: try to read as plain text
+        try {
+          content = fs.readFileSync(filePath, 'utf8');
+          htmlContent = content;
+        } catch (fallbackError) {
+          content = `[Error reading HTML file: ${htmlError.message}]`;
+          htmlContent = '';
+        }
+      }
+    } else if (ext === '.csv') {
+      content = fs.readFileSync(filePath, 'utf8');
+    } else if (ext === '.pdf') {
+      content = await convertPdfToMarkdown(filePath);
+    } else {
+      // For other file types, just store the filename
+      content = path.basename(filePath);
+    }
+  } catch (readError) {
+    console.error(`Error reading file ${filePath}:`, readError.message);
+    content = `[Error reading file: ${readError.message}]`;
+  }
+
+  // Ensure content and htmlContent are always strings (not null, undefined, or objects)
+  if (content === null || content === undefined) {
+    content = '';
+  }
+  if (typeof content !== 'string') {
+    console.warn(`Content is not a string for ${filePath}, type: ${typeof content}, converting...`);
+    try {
+      content = String(content);
+    } catch (e) {
+      console.error(`Failed to convert content to string for ${filePath}:`, e.message);
+      content = '';
+    }
+  }
+  
+  if (htmlContent === null || htmlContent === undefined) {
+    htmlContent = '';
+  }
+  if (typeof htmlContent !== 'string') {
+    console.warn(`htmlContent is not a string for ${filePath}, type: ${typeof htmlContent}, converting...`);
+    try {
+      htmlContent = String(htmlContent);
+    } catch (e) {
+      console.error(`Failed to convert htmlContent to string for ${filePath}:`, e.message);
+      htmlContent = '';
+    }
+  }
+
+  // Parse the path to extract subdirectory (match the regular upload structure)
+  const pathParts = relativePath.split(path.sep);
+  let subdirectory = '';
+  if (pathParts.length > 1) {
+    // Remove the filename from the path parts
+    subdirectory = pathParts.slice(0, -1).join('/');
+  }
+
+  // Create document for Elasticsearch - matching the exact structure from regular upload
+  const doc = {
+    device_id: String(deviceId || 'unknown'),
+    subdirectory: String(subdirectory || ''),
+    full_path: String(filePath || ''),
+    file_name: path.basename(filePath),
+    extracted_text: String(content || ''),
+    html_content: htmlContent || undefined, // Only include if it's an HTML file
+    folder_hash: String(folderHash || ''),
+    timestamp: new Date().toISOString()
+  };
+
+  // Remove undefined fields
+  Object.keys(doc).forEach(key => doc[key] === undefined && delete doc[key]);
+
+  // Validate that we have at least some content
+  if (!doc.extracted_text && !doc.html_content) {
+    console.warn(`Warning: No content extracted from ${filePath}`);
+    doc.extracted_text = `[File: ${doc.file_name}]`;
+  }
+
+  // Index the document
+  await client.index({
+    index: indexToUse,
+    document: doc
+  });
+}
 
 app.listen(port, () => {
   console.log(`Dashboard server running at http://localhost:${port}`);

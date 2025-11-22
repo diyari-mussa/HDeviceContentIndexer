@@ -14,12 +14,19 @@ function convertHtmlToText(filePath) {
     // Get text content
     const text = $('body').text() || $.text();
     
-    // Clean up whitespace
-    return text.replace(/\s+/g, ' ').trim();
+    // Clean up whitespace and ensure it's a string
+    const cleanText = text ? text.replace(/\s+/g, ' ').trim() : '';
+    return cleanText || html; // Return cleaned text or original HTML if empty
   } catch (error) {
-    console.error('Error extracting text from HTML:', error);
-    // Fallback: return raw HTML
-    return fs.readFileSync(filePath, 'utf8');
+    console.error('Error extracting text from HTML:', error.message);
+    // Fallback: try to return raw HTML
+    try {
+      const fallbackHtml = fs.readFileSync(filePath, 'utf8');
+      return String(fallbackHtml || '');
+    } catch (fallbackError) {
+      console.error('Error reading HTML file in fallback:', fallbackError.message);
+      return ''; // Return empty string as last resort
+    }
   }
 }
 

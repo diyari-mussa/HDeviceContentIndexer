@@ -12,6 +12,7 @@
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap: wrap;">
             <a href="index.html" class="control-btn" style="text-decoration: none;">🔍 Search</a>
             <a href="devices.html" class="control-btn" style="text-decoration: none;">📱 Devices</a>
+            <a href="crawler.html" class="control-btn" style="text-decoration: none;">🤖 Crawler</a>
             <a href="settings.html" class="control-btn" style="text-decoration: none;">⚙️ Settings</a>
             <button id="openChecksumsBtn" class="control-btn">🔐 Checksums History</button>
             <div style="flex: 1; min-width: 200px;">
@@ -29,11 +30,12 @@
                     <label for="folderInput" class="upload-btn">Choose Folder</label>
                 </div>
             </div>
-            <div class="upload-progress" id="uploadProgress" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress" id="progressBar"></div>
+            <div class="upload-progress" id="uploadProgress" style="display: none; margin-top: 20px; padding: 20px; background: white; border-radius: 12px; border: 2px solid #e2e8f0;">
+                <div style="margin-bottom: 12px; font-weight: 600; color: #475569; font-size: 1.1rem;">📤 Uploading Files</div>
+                <div class="progress-bar" style="height: 24px; background-color: #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
+                    <div class="progress" id="progressBar" style="height: 100%; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); width: 0%; transition: width 0.3s ease;"></div>
                 </div>
-                <span id="uploadStatus"></span>
+                <span id="uploadStatus" style="color: #64748b; font-size: 0.95rem; font-weight: 500;"></span>
             </div>
         </div>
         <div class="tree-section">
@@ -107,6 +109,23 @@
         </div>
     </div>
 
+    <script>
+        // Cookie helper functions
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        // Load selected index from cookie
+        const selectedIndexDisplay = document.getElementById('selectedIndexDisplay');
+        const cachedIndex = getCookie('selectedIndex');
+        if (cachedIndex && selectedIndexDisplay) {
+            selectedIndexDisplay.textContent = cachedIndex;
+            selectedIndexDisplay.style.color = '#2563eb';
+        }
+    </script>
     <script src="upload.js"></script>
 </body>
 </html>

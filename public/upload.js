@@ -145,34 +145,198 @@ document.addEventListener("DOMContentLoaded", () => {
         ingestBtn.disabled = checkedBoxes.length === 0;
     }
 
-    folderInput.addEventListener("change", async (e) => {
+    // Function to process uploaded files
+    async function processFiles(files) {
         // Check if an index is selected
         const selectedIndex = getCookie('selectedIndex');
         if (!selectedIndex || selectedIndex === 'null' || selectedIndex === '') {
             alert('⚠️ No index selected!\n\nPlease select an index from the settings page before uploading files.');
-            e.target.value = ''; // Clear the file input
             return;
         }
         
-        const files = Array.from(e.target.files);
         if (files.length > 0) {
+            // Show upload progress
+            const uploadProgress = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('progressBar');
+            const uploadStatus = document.getElementById('uploadStatus');
+            
+            uploadProgress.style.display = 'block';
+            progressBar.style.width = '0%';
+            uploadStatus.textContent = 'Uploading files...';
+            
             // Create FormData to upload files
             const formData = new FormData();
             const relativePaths = [];
             files.forEach(file => {
                 formData.append('files', file);
-                relativePaths.push(file.webkitRelativePath);
+                relativePaths.push(file.webkitRelativePath || file.name);
             });
             formData.append('relativePaths', JSON.stringify(relativePaths));
             formData.append('folderName', 'uploaded-folder');
 
             try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
+                const xhr = new XMLHttpRequest();
+                
+                // Track upload progress
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        progressBar.style.width = percentComplete + '%';
+                        uploadStatus.textContent = `Uploading: ${Math.round(percentComplete)}% (${Math.round(e.loaded / 1024 / 1024)}MB / ${Math.round(e.total / 1024 / 1024)}MB)`;
+                    }
                 });
-                const result = await response.json();
-                console.log('📥 Upload response:', result);
+                
+                // Handle completion
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        const result = JSON.parse(xhr.responseText);
+                        handleUploadComplete(result);
+                    } else if (xhr.status === 400) {
+                        // Parse error message for bad requests (like missing index)
+                        try {
+                            const errorData = JSON.parse(xhr.responseText);
+                            uploadStatus.textContent = 'Error: ' + (errorData.error || 'Upload failed!');
+                        } catch (e) {
+                            uploadStatus.textContent = 'Upload failed!';
+                        }
+                        uploadStatus.style.color = '#ef4444';
+                        progressBar.style.width = '0%';
+                    } else {
+                        uploadStatus.textContent = 'Upload failed!';
+                        uploadStatus.style.color = '#ef4444';
+                        progressBar.style.width = '0%';
+                    }
+                });
+                
+                xhr.addEventListener('error', () => {
+                    uploadStatus.textContent = 'Upload error!';
+                    uploadStatus.style.color = '#ef4444';
+                });
+                
+                xhr.open('POST', '/upload', true);
+                xhr.send(formData);
+            } catch (error) {
+                console.error('Upload error:', error);
+                uploadStatus.textContent = 'Error: ' + error.message;
+                uploadStatus.style.color = '#ef4444';
+            }
+        }
+    }
+
+    // File input change handler
+    folderInput.addEventListener("change", async (e) => {
+        const files = Array.from(e.target.files);
+        await processFiles(files);
+        e.target.value = ''; // Clear the input
+    });
+
+    // Drag and drop functionality
+    const uploadArea = document.getElementById('uploadArea');
+    
+    if (uploadArea) {
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+
+        // Highlight drop area when dragging over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.style.borderColor = '#3b82f6';
+                uploadArea.style.background = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)';
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.style.borderColor = '#cbd5e1';
+                uploadArea.style.background = 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)';
+            });
+        });
+
+        // Handle dropped files
+        uploadArea.addEventListener('drop', async (e) => {
+            const items = e.dataTransfer.items;
+            const files = [];
+            
+            // Process dropped items
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file') {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry) {
+                        if (entry.isDirectory) {
+                            await readDirectory(entry, '', files);
+                        } else {
+                            const file = item.getAsFile();
+                            if (file) files.push(file);
+                        }
+                    }
+                }
+            }
+            
+            if (files.length > 0) {
+                await processFiles(files);
+            } else {
+                alert('No valid files found in the dropped folder.');
+            }
+        });
+    }
+
+    // Helper function to recursively read directory
+    async function readDirectory(dirEntry, path, files) {
+        const dirReader = dirEntry.createReader();
+        
+        return new Promise((resolve, reject) => {
+            const readEntries = () => {
+                dirReader.readEntries(async (entries) => {
+                    if (entries.length === 0) {
+                        resolve();
+                        return;
+                    }
+                    
+                    for (const entry of entries) {
+                        if (entry.isFile) {
+                            await new Promise((resolveFile) => {
+                                entry.file((file) => {
+                                    // Add webkitRelativePath for consistency
+                                    Object.defineProperty(file, 'webkitRelativePath', {
+                                        value: path + file.name,
+                                        writable: false
+                                    });
+                                    files.push(file);
+                                    resolveFile();
+                                });
+                            });
+                        } else if (entry.isDirectory) {
+                            await readDirectory(entry, path + entry.name + '/', files);
+                        }
+                    }
+                    
+                    readEntries(); // Continue reading
+                }, reject);
+            };
+            
+            readEntries();
+        });
+    }
+
+    
+    function handleUploadComplete(result) {
+        const uploadProgress = document.getElementById('uploadProgress');
+        const uploadStatus = document.getElementById('uploadStatus');
+        
+        uploadStatus.textContent = 'Upload complete! Processing...';
+        uploadStatus.style.color = '#10b981';
+        
+        setTimeout(() => {
+            uploadProgress.style.display = 'none';
+        }, 1500);
+        
+        console.log('📥 Upload response:', result);
                 console.log('   - alreadyExists:', result.alreadyExists);
                 console.log('   - folderHash:', result.folderHash);
                 console.log('   - deviceId:', result.deviceId);
@@ -251,11 +415,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else {
                     alert('Upload failed: ' + result.error);
                 }
-            } catch (error) {
-                alert('Upload error: ' + error.message);
-            }
-        }
-    });
+    }
 
     selectAllBtn.addEventListener("click", () => {
         const checkboxes = treeView.querySelectorAll('input[type="checkbox"]');
@@ -285,6 +445,8 @@ document.addEventListener("DOMContentLoaded", () => {
                             <span>${name}</span>
                         </div>
                     `;
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    checkbox.addEventListener('change', updateIngestBtn);
                 } else {
                     // Folder
                     row.innerHTML = `
@@ -296,6 +458,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     `;
                     const content = document.createElement("div");
                     content.style.display = "none";
+                    content.className = "folder-content"; // Mark as folder content
+                    
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    
+                    // Checkbox change handler for folders - cascades to children
+                    checkbox.addEventListener('change', (e) => {
+                        const isChecked = e.target.checked;
+                        // Check/uncheck all child checkboxes
+                        const childCheckboxes = content.querySelectorAll('input[type="checkbox"]');
+                        childCheckboxes.forEach(childCb => {
+                            childCb.checked = isChecked;
+                        });
+                        updateIngestBtn();
+                    });
+                    
                     row.firstElementChild.addEventListener("click", (e) => {
                         if (e.target.tagName === 'INPUT') return;
                         const isOpen = content.style.display === "block";
@@ -309,10 +486,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
         render(tree, treeView);
-        const checkboxes = treeView.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-            cb.addEventListener('change', updateIngestBtn);
-        });
         updateIngestBtn();
     }
 
