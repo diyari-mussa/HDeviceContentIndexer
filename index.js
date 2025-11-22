@@ -70,6 +70,31 @@ function isFolderAlreadyProcessed(folderHash, deviceId, indexName) {
   return exists;
 }
 
+function removeChecksum(folderHash, deviceId, indexName) {
+  try {
+    const checksums = loadChecksums();
+    const key = `${folderHash}:${deviceId}:${indexName}`;
+
+    if (checksums.has(key)) {
+      checksums.delete(key);
+
+      // Write back to file as JSON
+      const checksumsObj = {};
+      for (const [k, v] of checksums) {
+        checksumsObj[k] = v;
+      }
+
+      fs.writeFileSync(CHECKSUM_FILE, JSON.stringify(checksumsObj, null, 2));
+      console.log(`🗑️ Removed checksum for: ${deviceId} in index ${indexName}`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error removing checksum:', error);
+    return false;
+  }
+}
+
 // Import file converters (only for PDF and HTML)
 const { convertPdfToMarkdown } = require('./file-processors/pdf-to-md');
 const { convertHtmlToText } = require('./file-processors/html-to-md');
@@ -1517,10 +1542,44 @@ app.delete('/api/devices/:deviceId', async (req, res) => {
 
     const deletedCount = response.deleted || 0;
 
+    // Remove checksum entries for this device in this index
+    let checksumsRemoved = 0;
+    try {
+      const checksums = loadChecksums();
+      const keysToRemove = [];
+      
+      // Find all checksum keys for this deviceId and index
+      for (const [key, value] of checksums) {
+        if (value.deviceId === deviceId && value.indexName === indexName) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      // Remove the found keys
+      for (const key of keysToRemove) {
+        checksums.delete(key);
+        checksumsRemoved++;
+      }
+      
+      // Write back to file if any checksums were removed
+      if (checksumsRemoved > 0) {
+        const checksumsObj = {};
+        for (const [k, v] of checksums) {
+          checksumsObj[k] = v;
+        }
+        fs.writeFileSync(CHECKSUM_FILE, JSON.stringify(checksumsObj, null, 2));
+        console.log(`🗑️ Removed ${checksumsRemoved} checksum(s) for device ${deviceId} in index ${indexName}`);
+      }
+    } catch (checksumError) {
+      console.error('Error removing checksums:', checksumError);
+      // Don't fail the whole operation if checksum removal fails
+    }
+
     res.json({
       success: true,
       message: `Device ${deviceId} deleted successfully`,
-      deletedCount: deletedCount
+      deletedCount: deletedCount,
+      checksumsRemoved: checksumsRemoved
     });
   } catch (error) {
     console.error('Error deleting device:', error);
@@ -1652,7 +1711,40 @@ app.post('/api/crawler/scan', async (req, res) => {
         const folderHash = calculateFolderHash(folderPath);
         
         // Check if already processed in the SELECTED index (unless force reindex is enabled)
-        const alreadyExists = forceReindex ? false : isFolderAlreadyProcessed(folderHash, deviceId, selectedIndex);
+        let alreadyExists = false;
+        if (!forceReindex) {
+          const checksumExists = isFolderAlreadyProcessed(folderHash, deviceId, selectedIndex);
+          if (checksumExists) {
+            // Verify documents actually exist in Elasticsearch
+            try {
+              const verifyResult = await client.search({
+                index: selectedIndex,
+                body: {
+                  query: {
+                    bool: {
+                      must: [
+                        { term: { 'device_id.keyword': deviceId } },
+                        { term: { 'folder_hash.keyword': folderHash } }
+                      ]
+                    }
+                  },
+                  size: 1
+                }
+              });
+              alreadyExists = verifyResult.body.hits.total.value > 0;
+              
+              // If checksum says it exists but ES has no documents, remove the checksum
+              if (!alreadyExists) {
+                console.log(`⚠️ Checksum exists for ${deviceId} but no documents found in ${selectedIndex}, removing stale checksum`);
+                removeChecksum(folderHash, deviceId, selectedIndex);
+              }
+            } catch (esError) {
+              console.error(`Error verifying documents in ES for ${deviceId}:`, esError.message);
+              // If ES check fails, trust the checksum
+              alreadyExists = checksumExists;
+            }
+          }
+        }
         
         // Count files
         let fileCount = 0;
