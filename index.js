@@ -812,13 +812,13 @@ app.get('/api/indices', async (req, res) => {
   }
 });
 
-// API: get 10 documents from an index
+// API: get 5 documents from an index
 app.get('/api/indices/:index/documents', async (req, res) => {
   try {
     const indexName = req.params.index;
     const resp = await client.search({
       index: indexName,
-      size: 10,
+      size: 5,
       query: { match_all: {} }
     });
     // Handle both old and new response formats

@@ -10,12 +10,14 @@ A powerful desktop application for indexing and searching device folder contents
 
 - 🔍 **Full-Text Search** - Search across all indexed files with highlighting
 - 📤 **Folder Upload** - Upload entire folder structures for indexing
+- 🤖 **Batch Crawler** - Automatically scan and ingest multiple device folders from uploads directory
 - 📱 **Device Management** - Organize content by device with easy management
-- 🔄 **Duplicate Detection** - SHA-256 hash-based duplicate folder detection
+- 🔄 **Smart Duplicate Detection** - Index-specific SHA-256 hash-based duplicate folder detection
 - 🎨 **Modern UI** - Clean, gradient-based interface with responsive design
-- 📊 **Multiple Formats** - Support for HTML, TXT, PDF, CSV files
-- 🗂️ **Index Management** - Create, view, and manage Elasticsearch indices
-- 🧹 **Cleanup Tools** - Remove physical folders while keeping indexed data
+- 📊 **Multiple Formats** - Support for HTML, TXT, CSV files (with extensible architecture)
+- 🗂️ **Index Management** - Create, view, and manage multiple Elasticsearch indices
+- 🧹 **Cleanup Tools** - Remove physical folders and checksums when deleting devices
+- 📈 **Real-time Progress** - Server-Sent Events (SSE) for live crawling progress updates
 
 ## 🖼️ Screenshots
 
@@ -89,13 +91,48 @@ Double-click STOP_APP.bat
 # OR close the console window
 ```
 
-### Uploading Content
+### Managing Indices
+
+1. Navigate to **Settings** page
+2. Click "➕ Create New Index" and enter a name
+3. Select an index from the list to view its documents (preview shows 5 documents)
+4. Click "✅ Use Selected Index" to make it active
+5. The active index will be used for all uploads and searches
+
+### Uploading Content (Manual Upload)
 
 1. Navigate to **Upload** page
-2. Drag and drop a folder or click "Choose Folder"
-3. Review the file tree
-4. Select files to index
-5. Click "Ingest Selected Files"
+2. Ensure an index is selected (shown at top)
+3. Drag and drop a folder or click "Choose Folder"
+4. Review the file tree
+5. Select files to index (only .html, .txt, .csv are supported)
+6. Click "Ingest Selected Files"
+
+### Batch Crawling (Automated)
+
+The **Crawler** feature allows you to batch-process multiple device folders:
+
+1. Go to **Upload** page and click **"🤖 Crawler"** tab
+2. Select an index from the dropdown
+3. Click **"🔄 Scanning..."** to scan the uploads folder
+4. View discovered folders with:
+   - ✅ **New** - Available for indexing
+   - 🔒 **Already Indexed** - Already exists in selected index
+5. Use selection buttons:
+   - **Select All** - Select all folders
+   - **Deselect All** - Clear selection
+   - **✅ Select New Only** - Select only new folders
+6. Check **"⚠️ Force Re-index"** to ignore existing checksums
+7. Click **"🚀 Start Crawling Selected Folders"**
+8. Watch real-time progress with live updates
+
+**Crawler Features:**
+- Skips temporary upload folders automatically
+- Shows file count for each folder
+- Filters files by extension (.html, .txt, .csv only)
+- Real-time progress with Server-Sent Events
+- Verifies documents exist before marking as indexed
+- Removes stale checksums automatically
 
 ### Searching
 
@@ -128,12 +165,12 @@ Double-click STOP_APP.bat
 
 ### Supported File Types
 
-- **HTML/HTM** - Full HTML rendering with text extraction
+- **HTML/HTM** - Full HTML rendering with text extraction using Cheerio
 - **TXT** - Plain text files
-- **PDF** - Text extraction from PDFs
-- **CSV** - Comma-separated values
-- **CSS** - Stylesheets
-- **INFO** - Information files
+- **CSV** - Comma-separated values files
+- **INFO** - Information files (treated as text)
+
+**Note:** PDF support is available in the code but currently not actively filtered by the crawler.
 
 ## 📁 Project Structure
 
@@ -197,25 +234,30 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Search
 - `POST /api/search` - Search indexed content
 
-### Upload
+### Upload & Crawling
 - `POST /upload` - Upload folder structure
 - `POST /ingest` - Ingest files to Elasticsearch
+- `POST /api/crawler/scan` - Scan uploads folder for device folders
+- `POST /api/crawler/crawl` - Crawl and ingest selected folders
+- `GET /api/crawler/progress` - SSE endpoint for real-time progress updates
 
 ### Indices
-- `GET /api/indices` - List all indices
+- `GET /api/indices` - List all indices with document counts
 - `POST /api/indices` - Create new index
 - `DELETE /api/indices/:index` - Delete index
-- `GET /api/indices/:index/documents` - Get documents
+- `GET /api/indices/:index/documents` - Get 5 sample documents
+- `GET /api/selected-index` - Get currently selected index
+- `POST /api/selected-index` - Set selected index
 
 ### Devices
-- `GET /api/devices` - List all devices
+- `GET /api/devices` - List all devices in selected index
 - `GET /api/devices/:deviceId/files` - Get device files
-- `DELETE /api/devices/:deviceId` - Delete device
+- `DELETE /api/devices/:deviceId` - Delete device and its checksums
 - `DELETE /api/devices/:deviceId/cleanup` - Remove physical folder
 
 ### Checksums
-- `GET /api/checksums` - Get all checksums
-- `DELETE /api/checksums/:hash` - Delete checksum
+- `GET /api/checksums` - Get all checksums (index-specific format)
+- `DELETE /api/checksums/:hash` - Delete checksum entry
 
 ## 🐛 Troubleshooting
 
@@ -261,28 +303,45 @@ Project Link: [https://github.com/diyari-mussa/HDeviceContentIndexer](https://gi
 
 **Made with ❤️ for efficient content management**
 
-The application uses SHA-256 checksums to prevent duplicate folder uploads:
+## 🔐 Checksum System
+
+The application uses an **index-specific** SHA-256 checksum system to prevent duplicate uploads:
+
+### How It Works
 
 1. **When you upload a folder**, the system calculates a unique checksum based on:
    - File paths and names
-   - File sizes and modification times
+   - File sizes and modification times  
    - Sample content from each file (first 1KB)
 
-2. **The checksum is stored** in `folder_checksums.json` with:
+2. **The checksum is stored** in `folder_checksums.json` with the format:
+   ```
+   hash:deviceId:indexName
+   ```
+   Each entry contains:
    - Folder hash (SHA-256)
    - Device ID (folder name)
+   - Index name
    - Timestamp
    - Folder name
 
-3. **Before indexing**, the system checks:
-   - Local checksum file for fast lookup
-   - Elasticsearch indices for backward compatibility
-   - Warns you if the folder has been uploaded before
+3. **Before indexing**, the crawler:
+   - Checks if checksum exists for the specific index
+   - Verifies documents actually exist in Elasticsearch
+   - Removes stale checksums if documents were deleted
+   - Allows the same folder in different indices
 
-4. **Managing Checksums**:
-   - View all uploaded folders in the "Checksums History" modal
-   - Delete checksums to allow re-uploading a folder
-   - Each device ID can only be uploaded once across all indices
+4. **When you delete a device**:
+   - Documents are removed from Elasticsearch
+   - Associated checksums are automatically deleted
+   - Folder becomes available for re-indexing
+
+### Key Features
+
+- ✅ **Index-Specific**: Same folder can exist in multiple indices
+- ✅ **Self-Healing**: Removes stale checksums when documents don't exist
+- ✅ **Automatic Cleanup**: Checksums deleted when device is deleted
+- ✅ **Force Re-index**: Option to bypass checksum validation
 
 ## Usage Guide
 
