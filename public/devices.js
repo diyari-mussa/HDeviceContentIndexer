@@ -3,6 +3,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedIndexDisplay = document.getElementById('selectedIndexDisplay');
     const refreshBtn = document.getElementById('refreshBtn');
 
+    // Pagination and search state
+    let currentPage = 1;
+    let pageSize = 50;
+    let totalPages = 1;
+    let totalDevices = 0;
+    let searchQuery = '';
+    let searchTimeout = null;
+
     // Helper function to get cookie value
     function getCookie(name) {
         const value = `; ${document.cookie}`;
@@ -20,8 +28,218 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedIndexDisplay.style.color = '#ef4444';
     }
 
+    // Create search and pagination UI
+    function createSearchAndPaginationUI() {
+        const controlsDiv = document.createElement('div');
+        controlsDiv.style.cssText = `
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        `;
+
+        // Search input
+        const searchContainer = document.createElement('div');
+        searchContainer.style.cssText = 'flex: 1; min-width: 250px;';
+        searchContainer.innerHTML = `
+            <input 
+                type="text" 
+                id="deviceSearchInput" 
+                placeholder="🔍 Search devices by name..."
+                style="
+                    width: 100%;
+                    padding: 10px 16px;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 0.95rem;
+                    transition: border-color 0.2s;
+                "
+            />
+        `;
+
+        // Pagination info
+        const paginationInfo = document.createElement('div');
+        paginationInfo.id = 'paginationInfo';
+        paginationInfo.style.cssText = `
+            font-size: 0.9rem;
+            color: #64748b;
+            font-weight: 500;
+        `;
+
+        controlsDiv.appendChild(searchContainer);
+        controlsDiv.appendChild(paginationInfo);
+
+        return controlsDiv;
+    }
+
+    // Create pagination controls
+    function createPaginationControls() {
+        const paginationDiv = document.createElement('div');
+        paginationDiv.id = 'paginationControls';
+        paginationDiv.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        `;
+
+        return paginationDiv;
+    }
+
+    // Update pagination info
+    function updatePaginationInfo() {
+        const paginationInfo = document.getElementById('paginationInfo');
+        if (paginationInfo) {
+            const start = totalDevices === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalDevices);
+            paginationInfo.textContent = `Showing ${start}-${end} of ${totalDevices} devices`;
+        }
+    }
+
+    // Render pagination controls
+    function renderPaginationControls() {
+        const paginationControls = document.getElementById('paginationControls');
+        if (!paginationControls) return;
+
+        paginationControls.innerHTML = '';
+
+        if (totalPages <= 1) return;
+
+        const btnStyle = `
+            padding: 8px 14px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        `;
+
+        const disabledStyle = `
+            opacity: 0.4;
+            cursor: not-allowed;
+        `;
+
+        const activeStyle = `
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        `;
+
+        // Previous button
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '← Previous';
+        prevBtn.style.cssText = btnStyle + (currentPage === 1 ? disabledStyle : '');
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.onclick = () => {
+            if (currentPage > 1) {
+                currentPage--;
+                fetchDevices();
+            }
+        };
+        paginationControls.appendChild(prevBtn);
+
+        // Page numbers
+        const maxPageButtons = 7;
+        let startPage = Math.max(1, currentPage - Math.floor(maxPageButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+
+        if (endPage - startPage < maxPageButtons - 1) {
+            startPage = Math.max(1, endPage - maxPageButtons + 1);
+        }
+
+        if (startPage > 1) {
+            const firstBtn = document.createElement('button');
+            firstBtn.textContent = '1';
+            firstBtn.style.cssText = btnStyle;
+            firstBtn.onclick = () => {
+                currentPage = 1;
+                fetchDevices();
+            };
+            paginationControls.appendChild(firstBtn);
+
+            if (startPage > 2) {
+                const ellipsis = document.createElement('span');
+                ellipsis.textContent = '...';
+                ellipsis.style.cssText = 'padding: 8px; color: #64748b;';
+                paginationControls.appendChild(ellipsis);
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const pageBtn = document.createElement('button');
+            pageBtn.textContent = i;
+            pageBtn.style.cssText = btnStyle + (i === currentPage ? activeStyle : '');
+            pageBtn.onclick = () => {
+                currentPage = i;
+                fetchDevices();
+            };
+            paginationControls.appendChild(pageBtn);
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const ellipsis = document.createElement('span');
+                ellipsis.textContent = '...';
+                ellipsis.style.cssText = 'padding: 8px; color: #64748b;';
+                paginationControls.appendChild(ellipsis);
+            }
+
+            const lastBtn = document.createElement('button');
+            lastBtn.textContent = totalPages;
+            lastBtn.style.cssText = btnStyle;
+            lastBtn.onclick = () => {
+                currentPage = totalPages;
+                fetchDevices();
+            };
+            paginationControls.appendChild(lastBtn);
+        }
+
+        // Next button
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next →';
+        nextBtn.style.cssText = btnStyle + (currentPage === totalPages ? disabledStyle : '');
+        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.onclick = () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                fetchDevices();
+            }
+        };
+        paginationControls.appendChild(nextBtn);
+    }
+
     // Fetch devices from selected index
     async function fetchDevices() {
+        const existingControls = document.getElementById('searchControls');
+        if (!existingControls) {
+            const controlsUI = createSearchAndPaginationUI();
+            controlsUI.id = 'searchControls';
+            devicesContainer.parentElement.insertBefore(controlsUI, devicesContainer);
+
+            // Add search event listener
+            const searchInput = document.getElementById('deviceSearchInput');
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    searchQuery = e.target.value.trim();
+                    currentPage = 1;
+                    fetchDevices();
+                }, 300);
+            });
+
+            searchInput.addEventListener('focus', function() {
+                this.style.borderColor = '#3b82f6';
+            });
+            searchInput.addEventListener('blur', function() {
+                this.style.borderColor = '#e2e8f0';
+            });
+        }
+
         devicesContainer.innerHTML = '<div class="loading">Loading devices...</div>';
 
         if (!selectedIndex || selectedIndex === 'null') {
@@ -37,14 +255,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch(`/api/devices?index=${encodeURIComponent(selectedIndex)}`);
+            const params = new URLSearchParams({
+                index: selectedIndex,
+                page: currentPage,
+                pageSize: pageSize
+            });
+
+            if (searchQuery) {
+                params.append('search', searchQuery);
+            }
+
+            const response = await fetch(`/api/devices?${params}`);
             const data = await response.json();
 
             if (!data.success) {
                 throw new Error(data.error || 'Failed to fetch devices');
             }
 
+            totalDevices = data.total;
+            totalPages = data.totalPages;
+            
+            updatePaginationInfo();
             renderDevices(data.devices);
+            renderPaginationControls();
+
+            // Add pagination controls after devices if not exists
+            if (!document.getElementById('paginationControls')) {
+                const paginationDiv = createPaginationControls();
+                devicesContainer.parentElement.appendChild(paginationDiv);
+            }
+
         } catch (error) {
             console.error('Error fetching devices:', error);
             devicesContainer.innerHTML = `

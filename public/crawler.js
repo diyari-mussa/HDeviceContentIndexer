@@ -102,9 +102,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.success) {
                 discoveredFolders = data.folders;
                 renderFolders(discoveredFolders);
-                const newCount = discoveredFolders.filter(f => !f.alreadyExists).length;
+                const newCount = discoveredFolders.filter(f => !f.alreadyExists && f.supportedFileCount > 0).length;
                 const existingCount = discoveredFolders.filter(f => f.alreadyExists).length;
-                folderCount.textContent = `Found ${discoveredFolders.length} folder(s) — ${newCount} new, ${existingCount} already indexed`;
+                const neglectedCount = discoveredFolders.filter(f => !f.alreadyExists && f.supportedFileCount === 0).length;
+                folderCount.textContent = `Found ${discoveredFolders.length} folder(s) — ${newCount} new, ${existingCount} already indexed, ${neglectedCount} neglected`;
+                folderCount.style.color = '#1e293b';
+                folderCount.style.fontWeight = '600';
             } else {
                 alert('Scan failed: ' + data.error);
                 foldersSection.style.display = 'none';
@@ -129,46 +132,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
         foldersList.innerHTML = '';
 
-        folders.forEach((folder, index) => {
-            const folderDiv = document.createElement('div');
-            folderDiv.style.cssText = `
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 16px;
-                border: 2px solid ${folder.alreadyExists ? '#fde68a' : '#d1fae5'};
-                background: ${folder.alreadyExists ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'};
-                border-radius: 8px;
-                margin-bottom: 12px;
-            `;
+        // Separate folders by category
+        const newFolders = folders.filter(f => !f.alreadyExists && f.supportedFileCount > 0);
+        const existingFolders = folders.filter(f => f.alreadyExists);
+        const neglectedFolders = folders.filter(f => !f.alreadyExists && f.supportedFileCount === 0);
 
-            const statusIcon = folder.alreadyExists ? '⚠️' : '✅';
-            const statusText = folder.alreadyExists ? 'Already Indexed' : 'New Folder';
-            const statusColor = folder.alreadyExists ? '#92400e' : '#065f46';
+        // Render New Folders
+        if (newFolders.length > 0) {
+            const newSection = document.createElement('div');
+            newSection.style.marginBottom = '24px';
+            newSection.innerHTML = `<h3 style="color: #065f46; margin-bottom: 12px; font-size: 1.1rem;">✅ New Folders (${newFolders.length})</h3>`;
+            foldersList.appendChild(newSection);
+            newFolders.forEach((folder, index) => renderFolder(folder, index, true, 'new'));
+        }
 
-            folderDiv.innerHTML = `
-                <input type="checkbox" id="folder-${index}" data-folder-index="${index}" style="width: 20px; height: 20px; cursor: pointer;" ${folder.alreadyExists ? '' : 'checked'}>
-                <label for="folder-${index}" style="flex: 1; cursor: pointer; display: flex; align-items: center; gap: 12px;">
-                    <span style="font-size: 24px;">${statusIcon}</span>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; color: ${statusColor}; margin-bottom: 4px;">
-                            📁 ${folder.name}
-                        </div>
-                        <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
-                            Device ID: <code>${folder.deviceId}</code>
-                        </div>
-                        <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
-                            Files: ${folder.fileCount} | Hash: <code>${folder.folderHash.substring(0, 12)}...</code>
-                        </div>
-                        <div style="font-size: 0.85rem; font-weight: 600; color: ${statusColor};">
-                            ${statusText}
-                        </div>
-                    </div>
-                </label>
-            `;
+        // Render Already Indexed Folders
+        if (existingFolders.length > 0) {
+            const existingSection = document.createElement('div');
+            existingSection.style.marginBottom = '24px';
+            existingSection.innerHTML = `<h3 style="color: #92400e; margin-bottom: 12px; font-size: 1.1rem;">⚠️ Already Indexed (${existingFolders.length})</h3>`;
+            foldersList.appendChild(existingSection);
+            existingFolders.forEach((folder, index) => renderFolder(folder, newFolders.length + index, false, 'existing'));
+        }
 
-            foldersList.appendChild(folderDiv);
-        });
+        // Render Neglected Folders
+        if (neglectedFolders.length > 0) {
+            const neglectedSection = document.createElement('div');
+            neglectedSection.style.marginBottom = '24px';
+            neglectedSection.innerHTML = `<h3 style="color: #64748b; margin-bottom: 12px; font-size: 1.1rem;">🚫 Neglected - No Supported Files (${neglectedFolders.length})</h3>`;
+            foldersList.appendChild(neglectedSection);
+            neglectedFolders.forEach((folder, index) => renderFolder(folder, newFolders.length + existingFolders.length + index, false, 'neglected'));
+        }
 
         // Add change listeners to checkboxes
         const checkboxes = foldersList.querySelectorAll('input[type="checkbox"]');
@@ -179,10 +173,79 @@ document.addEventListener("DOMContentLoaded", () => {
         updateCrawlButton();
     }
 
-    // Update crawl button state
+    // Render individual folder
+    function renderFolder(folder, index, checked, category) {
+        const folderDiv = document.createElement('div');
+        
+        let borderColor, bgGradient, statusIcon, statusText, statusColor;
+        
+        if (category === 'new') {
+            borderColor = '#d1fae5';
+            bgGradient = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+            statusIcon = '✅';
+            statusText = `New Folder - ${folder.supportedFileCount} supported file(s)`;
+            statusColor = '#065f46';
+        } else if (category === 'existing') {
+            borderColor = '#fde68a';
+            bgGradient = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+            statusIcon = '🔒';
+            statusText = 'Already Indexed';
+            statusColor = '#92400e';
+        } else { // neglected
+            borderColor = '#e2e8f0';
+            bgGradient = 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)';
+            statusIcon = '🚫';
+            statusText = `No supported files (.html/.txt/.csv) - ${folder.fileCount} total file(s)`;
+            statusColor = '#64748b';
+        }
+
+        folderDiv.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border: 2px solid ${borderColor};
+            background: ${bgGradient};
+            border-radius: 8px;
+            margin-bottom: 12px;
+        `;
+
+        folderDiv.innerHTML = `
+            <input type="checkbox" id="folder-${index}" data-folder-index="${index}" data-folder-name="${folder.name}" style="width: 20px; height: 20px; cursor: pointer;" ${checked ? 'checked' : ''} ${category === 'neglected' ? 'disabled' : ''}>
+            <label for="folder-${index}" style="flex: 1; cursor: pointer; display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 24px;">${statusIcon}</span>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; color: ${statusColor}; margin-bottom: 4px;">
+                        📁 ${folder.name}
+                    </div>
+                    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
+                        Device ID: <code>${folder.deviceId}</code>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
+                        Total Files: ${folder.fileCount} | Supported: ${folder.supportedFileCount} | Hash: <code>${folder.folderHash.substring(0, 12)}...</code>
+                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${statusColor};">
+                        ${statusText}
+                    </div>
+                </div>
+            </label>
+        `;
+
+        foldersList.appendChild(folderDiv);
+    }
+
+    // Update crawl button state and show selection count
     function updateCrawlButton() {
-        const checkedBoxes = foldersList.querySelectorAll('input[type="checkbox"]:checked');
-        crawlBtn.disabled = checkedBoxes.length === 0;
+        const checkedBoxes = foldersList.querySelectorAll('input[type="checkbox"]:checked:not([disabled])');
+        const selectedCount = checkedBoxes.length;
+        
+        crawlBtn.disabled = selectedCount === 0;
+        
+        if (selectedCount > 0) {
+            crawlBtn.textContent = `🤖 Start Crawling ${selectedCount} Selected Folder(s)`;
+        } else {
+            crawlBtn.textContent = `🤖 Start Crawling Selected Folders`;
+        }
     }
 
     // Select/Deselect all folders

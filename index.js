@@ -142,9 +142,9 @@ function cleanupTempFolders() {
 // Run cleanup on startup
 cleanupTempFolders();
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware - Increase payload limits for large folder scans
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 app.use(express.static('public'));
 
 // Check Elasticsearch connection status
@@ -1368,6 +1368,9 @@ app.get('/api/statistics', async (req, res) => {
 app.get('/api/devices', async (req, res) => {
   try {
     const indexName = req.query.index || selectedIndex || '_all';
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+    const searchQuery = req.query.search || '';
 
     // Aggregate by device_id
     const response = await client.search({
@@ -1378,7 +1381,10 @@ app.get('/api/devices', async (req, res) => {
           devices: {
             terms: {
               field: 'device_id.keyword',
-              size: 1000
+              size: 10000, // Get all devices for filtering
+              ...(searchQuery && {
+                include: `.*${searchQuery}.*`
+              })
             },
             aggs: {
               first_indexed: {
@@ -1404,18 +1410,28 @@ app.get('/api/devices', async (req, res) => {
     });
 
     const buckets = response.aggregations?.devices?.buckets || [];
-    const devices = buckets.map(bucket => ({
+    const allDevices = buckets.map(bucket => ({
       deviceId: bucket.key,
-      fileCount: bucket.doc_count, // This gives us the document count directly
+      fileCount: bucket.doc_count,
       firstIndexed: bucket.first_indexed.value_as_string || bucket.first_indexed.value,
       lastIndexed: bucket.last_indexed.value_as_string || bucket.last_indexed.value,
       folderHash: bucket.folder_hash.buckets[0]?.key || null
     }));
 
+    // Apply pagination
+    const totalDevices = allDevices.length;
+    const totalPages = Math.ceil(totalDevices / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedDevices = allDevices.slice(startIndex, endIndex);
+
     res.json({
       success: true,
-      devices: devices,
-      total: devices.length
+      devices: paginatedDevices,
+      total: totalDevices,
+      page: page,
+      pageSize: pageSize,
+      totalPages: totalPages
     });
   } catch (error) {
     console.error('Error fetching devices:', error);
@@ -1746,8 +1762,9 @@ app.post('/api/crawler/scan', async (req, res) => {
           }
         }
         
-        // Count files
+        // Count files and supported files
         let fileCount = 0;
+        let supportedFileCount = 0;
         const countFiles = (dir) => {
           const items = fs.readdirSync(dir, { withFileTypes: true });
           items.forEach(item => {
@@ -1755,6 +1772,10 @@ app.post('/api/crawler/scan', async (req, res) => {
               countFiles(path.join(dir, item.name));
             } else {
               fileCount++;
+              const fullPath = path.join(dir, item.name);
+              if (isAllowedFile(fullPath)) {
+                supportedFileCount++;
+              }
             }
           });
         };
@@ -1766,7 +1787,8 @@ app.post('/api/crawler/scan', async (req, res) => {
           folderHash,
           deviceId,
           alreadyExists,
-          fileCount
+          fileCount,
+          supportedFileCount
         });
       }
     }
