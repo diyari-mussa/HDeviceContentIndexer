@@ -1039,57 +1039,58 @@ function generatePhoneVariations(query) {
   // Add digits only
   variations.add(digitsOnly);
   
-  // For international numbers (10+ digits)
-  if (digitsOnly.length >= 10) {
-    // Remove leading country code patterns
-    // +964 7702216362 -> 7702216362 (remove country code)
-    if (digitsOnly.startsWith('964')) {
-      variations.add(digitsOnly.substring(3));
-    }
-    
-    // Add with + prefix
-    variations.add('+' + digitsOnly);
-    
-    // Add with 0 prefix if doesn't have it
-    if (!digitsOnly.startsWith('0') && digitsOnly.length >= 10) {
-      const withZero = '0' + digitsOnly.substring(digitsOnly.length - 10);
-      variations.add(withZero);
-    }
-    
-    // Generate spaced variations for last 10 digits
-    const last10 = digitsOnly.substring(digitsOnly.length - 10);
-    const last9 = digitsOnly.substring(digitsOnly.length - 9);
-    
-    // XXX XXX XXXX format
-    if (last10.length === 10) {
-      variations.add(`${last10.substring(0, 3)} ${last10.substring(3, 6)} ${last10.substring(6)}`);
-      // 0XXX XXX XXXX
-      variations.add(`0${last9.substring(0, 3)} ${last9.substring(3, 6)} ${last9.substring(6)}`);
-    }
-    
-    // XXX XXX XX XX format
-    if (last10.length === 10) {
-      variations.add(`${last10.substring(0, 3)} ${last10.substring(3, 6)} ${last10.substring(6, 8)} ${last10.substring(8)}`);
-    }
-    
-    // Country code + space + rest
-    if (digitsOnly.length === 12 && digitsOnly.startsWith('964')) {
-      variations.add(`964 ${digitsOnly.substring(3, 6)} ${digitsOnly.substring(6)}`);
-      variations.add(`+964 ${digitsOnly.substring(3, 6)} ${digitsOnly.substring(6)}`);
-    }
-  }
+  // Identify core number (10 digits) for standard mobile numbers
+  let coreNumber = '';
   
-  // For shorter numbers (7-9 digits)
-  if (digitsOnly.length >= 7 && digitsOnly.length <= 9) {
-    // XXX XXX XXX format
-    if (digitsOnly.length === 9) {
-      variations.add(`${digitsOnly.substring(0, 3)} ${digitsOnly.substring(3, 6)} ${digitsOnly.substring(6)}`);
-    }
-    
-    // XXX XXXX format for 7 digits
-    if (digitsOnly.length === 7) {
-      variations.add(`${digitsOnly.substring(0, 3)} ${digitsOnly.substring(3)}`);
-    }
+  if (digitsOnly.length === 13 && digitsOnly.startsWith('964')) {
+      // Iraqi format with country code: 964 770 123 4567
+      coreNumber = digitsOnly.substring(3);
+  } else if (digitsOnly.length === 11 && digitsOnly.startsWith('0')) {
+      // Local format with leading zero: 0770 123 4567
+      coreNumber = digitsOnly.substring(1);
+  } else if (digitsOnly.length === 10) {
+      // Raw format: 770 123 4567
+      coreNumber = digitsOnly;
+  }
+
+  // If we identified a valid 10-digit core number
+  if (coreNumber.length === 10) {
+      const p1 = coreNumber.substring(0, 3); // 770
+      const p2 = coreNumber.substring(3, 6); // 221
+      const p3 = coreNumber.substring(6);    // 6262
+      const p3a = coreNumber.substring(6, 8); // 62
+      const p3b = coreNumber.substring(8);    // 62
+      
+      // 1. Basic formats
+      variations.add(coreNumber); // 7702216262
+      variations.add(`0${coreNumber}`); // 07702216262
+      variations.add(`964${coreNumber}`); // 9647702216262
+      variations.add(`+964${coreNumber}`); // +9647702216262
+      
+      // 2. Spaced formats (Local)
+      variations.add(`${p1} ${p2} ${p3}`); // 770 221 6262
+      variations.add(`${p1} ${p2} ${p3a} ${p3b}`); // 770 221 62 62
+      
+      // 3. Spaced formats (With 0)
+      variations.add(`0${p1} ${p2} ${p3}`); // 0770 221 6262
+      variations.add(`0${p1} ${p2} ${p3a} ${p3b}`); // 0770 221 62 62
+      variations.add(`0${p1} ${p2}${p3}`); // 0770 2216262
+      
+      // 4. Spaced formats (International)
+      variations.add(`+964 ${coreNumber}`); // +964 7702216262
+      variations.add(`+964 ${p1} ${p2} ${p3}`); // +964 770 221 6262
+      variations.add(`964 ${p1} ${p2} ${p3}`); // 964 770 221 6262
+  } else {
+      // Fallback for other lengths
+      if (digitsOnly.length >= 10) {
+        // Add with + prefix
+        variations.add('+' + digitsOnly);
+        
+        // Add with 0 prefix if doesn't have it
+        if (!digitsOnly.startsWith('0')) {
+          variations.add('0' + digitsOnly);
+        }
+      }
   }
   
   return Array.from(variations);
@@ -1110,10 +1111,11 @@ app.post('/api/search', async (req, res) => {
     }
 
     let searchQuery;
+    let phoneVariations = null;
     
     // Check if advanced search is enabled
     if (advancedSearch) {
-      const phoneVariations = generatePhoneVariations(query);
+      phoneVariations = generatePhoneVariations(query);
       
       if (phoneVariations && phoneVariations.length > 1) {
         // Use bool query with should clauses for multiple variations (phone numbers)
@@ -1243,7 +1245,8 @@ app.post('/api/search', async (req, res) => {
       success: true,
       query: query,
       total: totalHits,
-      results: results
+      results: results,
+      variations: phoneVariations
     });
   } catch (error) {
     console.error('Search error:', error);

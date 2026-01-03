@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchInput = document.getElementById("searchInput");
     const searchBtn = document.getElementById("searchBtn");
     const searchResults = document.getElementById("searchResults");
+    const searchVariations = document.getElementById("searchVariations");
     const resultCount = document.getElementById("resultCount");
     const resultsContainer = document.getElementById("resultsContainer");
     const advancedSearchToggle = document.getElementById("advancedSearchToggle");
@@ -51,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!j.success) throw new Error(j.error || 'Search failed');
 
-            displaySearchResults(j.results, j.total, j.query);
+            displaySearchResults(j.results, j.total, j.query, j.variations);
         } catch (err) {
             console.error('Search error:', err);
             resultsContainer.innerHTML = `<div style="color:crimson; padding:20px;">Error: ${err.message}</div>`;
@@ -61,12 +62,27 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function displaySearchResults(results, total, query) {
+    function displaySearchResults(results, total, query, variations) {
         // Hide statistics dashboard when showing search results
         if (statisticsDashboard) statisticsDashboard.style.display = 'none';
         
         searchResults.style.display = 'block';
         resultCount.textContent = total;
+
+        // Display variations if available
+        if (searchVariations) {
+            if (variations && variations.length > 0) {
+                searchVariations.style.display = 'block';
+                searchVariations.innerHTML = `
+                    <div style="font-weight:600; color:#0369a1; margin-bottom:8px;">ℹ️ Searching for phone number variations:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        ${variations.map(v => `<span style="background:white; padding:4px 8px; border-radius:4px; border:1px solid #bae6fd; color:#0284c7; font-family:monospace;">${v}</span>`).join('')}
+                    </div>
+                `;
+            } else {
+                searchVariations.style.display = 'none';
+            }
+        }
 
         if (total === 0) {
             resultsContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;"><div style="font-size:64px; margin-bottom:16px;">🔍</div><div style="font-size:1.2rem; font-weight:600; margin-bottom:8px;">No results found</div><div>Try different keywords or check your spelling</div></div>';
