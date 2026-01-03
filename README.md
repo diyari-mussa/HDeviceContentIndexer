@@ -105,7 +105,7 @@ Double-click STOP_APP.bat
 2. Ensure an index is selected (shown at top)
 3. Drag and drop a folder or click "Choose Folder"
 4. Review the file tree
-5. Select files to index (only .html, .txt, .csv are supported)
+5. Select files to index (only .html, .txt, .csv, .xlsx, .pdf are supported)
 6. Click "Ingest Selected Files"
 
 ### Batch Crawling (Automated)
@@ -129,7 +129,7 @@ The **Crawler** feature allows you to batch-process multiple device folders:
 **Crawler Features:**
 - Skips temporary upload folders automatically
 - Shows file count for each folder
-- Filters files by extension (.html, .txt, .csv only)
+- Filters files by extension (.html, .txt, .csv, .xlsx, .pdf only)
 - Real-time progress with Server-Sent Events
 - Verifies documents exist before marking as indexed
 - Removes stale checksums automatically

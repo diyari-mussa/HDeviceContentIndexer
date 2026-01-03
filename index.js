@@ -98,6 +98,7 @@ function removeChecksum(folderHash, deviceId, indexName) {
 // Import file converters (only for PDF and HTML)
 const { convertPdfToMarkdown } = require('./file-processors/pdf-to-md');
 const { convertHtmlToText } = require('./file-processors/html-to-md');
+const { convertExcelToMarkdown } = require('./file-processors/excel-to-md');
 
 const app = express();
 const port = 3000;
@@ -256,7 +257,7 @@ function getAllFiles(dirPath, arrayOfFiles) {
 // Function to check if file extension is allowed
 function isAllowedFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  return ['.html', '.htm', '.txt', '.csv'].includes(ext);
+  return ['.html', '.htm', '.txt', '.csv', '.xlsx', '.xls'].includes(ext);
 }
 
 // Function to read file content
@@ -272,6 +273,9 @@ async function convertFileToMarkdown(filePath) {
     switch (ext) {
       case '.pdf':
         return await convertPdfToMarkdown(filePath);
+      case '.xlsx':
+      case '.xls':
+        return await convertExcelToMarkdown(filePath);
       case '.html':
       case '.htm':
         return convertHtmlToText(filePath);
@@ -1893,7 +1897,7 @@ app.post('/api/crawler/crawl', async (req, res) => {
           return isAllowed;
         });
 
-        console.log(`📊 Folder ${folderName}: ${allFiles.length} total files, ${allowedFiles.length} allowed (.html/.txt/.csv)`);
+        console.log(`📊 Folder ${folderName}: ${allFiles.length} total files, ${allowedFiles.length} allowed (.html/.txt/.csv/.xlsx/.pdf)`);
 
         sendProgress(
           Math.round((processedFolders / totalFolders) * 100),
@@ -1996,6 +2000,8 @@ async function ingestSingleFile(filePath, relativePath, deviceId, folderHash) {
       }
     } else if (ext === '.csv') {
       content = fs.readFileSync(filePath, 'utf8');
+    } else if (ext === '.xlsx' || ext === '.xls') {
+      content = await convertExcelToMarkdown(filePath);
     } else if (ext === '.pdf') {
       content = await convertPdfToMarkdown(filePath);
     } else {

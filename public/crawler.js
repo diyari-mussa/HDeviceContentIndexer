@@ -195,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
             borderColor = '#e2e8f0';
             bgGradient = 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)';
             statusIcon = '🚫';
-            statusText = `No supported files (.html/.txt/.csv) - ${folder.fileCount} total file(s)`;
+            statusText = `No supported files (.html/.txt/.csv/.xlsx/.pdf) - ${folder.fileCount} total file(s)`;
             statusColor = '#64748b';
         }
 

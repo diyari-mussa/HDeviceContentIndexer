@@ -49,7 +49,7 @@
 2. Ensure an index is selected (shown at top)
 3. Drag & drop a folder or click "Choose Folder"
 4. Review file tree (green = new, yellow = duplicate)
-5. Select files to ingest (only .html, .txt, .csv supported)
+5. Select files to ingest (only .html, .txt, .csv, .xlsx, .pdf supported)
 6. Click "Ingest Selected Files"
 
 ### 3. Batch Crawler (Recommended for Multiple Folders)
@@ -72,7 +72,7 @@
 9. Watch real-time progress updates
 
 **Crawler Features:**
-- Automatically filters supported files (.html, .txt, .csv)
+- Automatically filters supported files (.html, .txt, .csv, .xlsx, .pdf)
 - Shows file count for each folder
 - Real-time progress with live updates
 - Verifies existing documents in Elasticsearch
@@ -113,6 +113,8 @@ Only these file types are indexed:
 - ✅ `.html` / `.htm` - Full text extraction
 - ✅ `.txt` - Plain text
 - ✅ `.csv` - Comma-separated values
+- ✅ `.xlsx` / `.xls` - Excel Spreadsheets
+- ✅ `.pdf` - Portable Document Format
 
 All other files (.pdf, .jpg, .mp4, etc.) are **skipped automatically**.
 
@@ -152,7 +154,7 @@ This is now automatically fixed! The crawler:
 2. Verifies documents exist in Elasticsearch
 3. Removes stale checksums if documents are gone
 4. Shows folder as "New" if no documents found
-
+, .xlsx, .pdf
 ### Files Not Being Indexed
 - **File Types**: Only .html, .txt, .csv are supported
 - **Crawler Tab**: Use the Crawler tab for batch processing
