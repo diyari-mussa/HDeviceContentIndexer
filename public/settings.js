@@ -29,6 +29,8 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const r = await fetch('/api/elasticsearch/status');
             const j = await r.json();
+            
+            const statusContainer = document.getElementById('esStatus');
 
             if (j.success && j.isConnected) {
                 const statusColors = {
@@ -45,9 +47,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 
                 // Update status container styling for connected state
-                const statusContainer = document.getElementById('esStatus');
                 if (statusContainer) {
-                    statusContainer.style.background = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+                    statusContainer.style.background = 'rgba(16, 185, 129, 0.1)';
                     statusContainer.style.borderColor = '#10b981';
                 }
                 
@@ -60,9 +61,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 esStatus.text.textContent = 'Not connected';
                 
                 // Update status container styling for disconnected state
-                const statusContainer = document.getElementById('esStatus');
                 if (statusContainer) {
-                    statusContainer.style.background = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
+                    statusContainer.style.background = 'rgba(239, 68, 68, 0.1)';
                     statusContainer.style.borderColor = '#ef4444';
                 }
                 
@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // Update status container styling for error state
             const statusContainer = document.getElementById('esStatus');
             if (statusContainer) {
-                statusContainer.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                statusContainer.style.background = 'rgba(245, 158, 11, 0.1)';
                 statusContainer.style.borderColor = '#f59e0b';
             }
             
@@ -140,75 +140,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         indices.forEach(name => {
             const indexCard = document.createElement('div');
-            indexCard.style.cssText = `
-                padding: 14px 16px;
-                border-bottom: 1px solid #e2e8f0;
-                transition: all 0.2s;
-                cursor: pointer;
-            `;
+            indexCard.className = 'index-item';
 
             indexCard.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
                     <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
                         <span style="font-size:18px;">📊</span>
-                        <span style="font-weight: 500; color: #475569;">${name}</span>
+                        <span class="index-name">${name}</span>
                     </div>
-                    <button class="delete-index-btn" data-index="${name}" style="
-                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-                        color: white;
-                        border: none;
-                        padding: 6px 14px;
-                        border-radius: 6px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        font-size: 0.85rem;
-                        transition: all 0.2s;
-                        display: none;
-                    ">🗑️ Delete</button>
+                    <button class="delete-index-btn delete-btn" data-index="${name}">🗑️ Delete</button>
                 </div>
             `;
 
-            const deleteBtn = indexCard.querySelector('.delete-index-btn');
-
-            indexCard.addEventListener('mouseenter', () => {
-                if (!indexCard.dataset.selected || indexCard.dataset.selected === 'false') {
-                    indexCard.style.background = '#f1f5f9';
-                    indexCard.style.transform = 'translateX(4px)';
-                }
-                deleteBtn.style.display = 'block';
-            });
-
-            indexCard.addEventListener('mouseleave', () => {
-                if (!indexCard.dataset.selected || indexCard.dataset.selected === 'false') {
-                    indexCard.style.background = '';
-                    indexCard.style.transform = 'translateX(0)';
-                }
-                if (indexCard.dataset.selected !== 'true') {
-                    deleteBtn.style.display = 'none';
-                }
-            });
+            const deleteBtn = indexCard.querySelector('.delete-btn');
 
             indexCard.addEventListener('click', async (e) => {
-                if (e.target.classList.contains('delete-index-btn') || e.target.closest('.delete-index-btn')) {
-                    return; // Don't select when clicking delete
-                }
+                if (e.target.classList.contains('delete-btn')) return;
 
                 // Clear previous selection
                 Array.from(indicesList.children).forEach(ch => {
-                    ch.style.background = '';
-                    ch.style.color = '#475569';
-                    ch.style.fontWeight = '500';
-                    ch.dataset.selected = 'false';
-                    const btn = ch.querySelector('.delete-index-btn');
-                    if (btn) btn.style.display = 'none';
+                   ch.classList.remove('selected');
                 });
 
                 // Select current
-                indexCard.style.background = 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)';
-                indexCard.querySelector('span:last-child').style.color = '#1e40af';
-                indexCard.querySelector('span:last-child').style.fontWeight = '600';
-                indexCard.dataset.selected = 'true';
-                deleteBtn.style.display = 'block';
+                indexCard.classList.add('selected');
 
                 selectedIndex = name;
                 selectedIndexName.textContent = `(${name})`;
@@ -241,7 +196,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             alert(`Index "${name}" deleted successfully`);
                             fetchIndices();
                             indexDocs.innerHTML = `
-                                <div style="text-align:center; padding:40px; color:#64748b;">
+                                <div style="text-align:center; padding:40px; color:var(--text-secondary);">
                                     <div style="font-size:64px; margin-bottom:12px;">📊</div>
                                     <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">Select an index to preview</div>
                                     <div style="font-size: 0.9rem;">Choose an index from the left panel to view its documents</div>
@@ -275,30 +230,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderDocs(docs) {
         if (!docs || docs.length === 0) {
-            indexDocs.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;"><div style="font-size:48px; margin-bottom:10px;">📄</div><div>No documents found</div></div>';
+            indexDocs.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);"><div style="font-size:48px; margin-bottom:10px;">📄</div><div>No documents found</div></div>';
             return;
         }
         indexDocs.innerHTML = '';
         docs.forEach((h, index) => {
             const wrapper = document.createElement('div');
-            wrapper.style.cssText = `
-                border: 2px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 12px;
-                margin-bottom: 12px;
-                background: white;
-                transition: all 0.2s;
-            `;
-
-            wrapper.addEventListener('mouseenter', () => {
-                wrapper.style.borderColor = '#2563eb';
-                wrapper.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)';
-            });
-
-            wrapper.addEventListener('mouseleave', () => {
-                wrapper.style.borderColor = '#e2e8f0';
-                wrapper.style.boxShadow = 'none';
-            });
+            wrapper.className = 'doc-card';
 
             const header = document.createElement('div');
             header.style.cssText = `
@@ -307,15 +245,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 align-items: center;
                 margin-bottom: 8px;
                 padding-bottom: 8px;
-                border-bottom: 1px solid #f1f5f9;
+                border-bottom: 1px solid var(--border-color);
             `;
 
             const docNumber = document.createElement('span');
             docNumber.style.cssText = `
-                background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-                color: white;
+                background: var(--primary-cyan);
+                color: var(--bg-deep);
                 padding: 4px 10px;
-                border-radius: 6px;
+                border-radius: 4px;
                 font-size: 0.75rem;
                 font-weight: 600;
             `;
@@ -324,11 +262,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const id = document.createElement('div');
             id.style.cssText = `
                 font-size: 0.75rem;
-                color: #64748b;
-                font-family: monospace;
-                background: #f1f5f9;
+                color: var(--text-secondary);
+                font-family: 'Consolas', monospace;
                 padding: 4px 8px;
-                border-radius: 4px;
             `;
             id.textContent = `ID: ${h._id.substring(0, 12)}...`;
 
@@ -343,13 +279,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 overflow-wrap: break-word;
                 margin: 0;
                 font-size: 0.85rem;
-                color: #334155;
-                background: #f8fafc;
+                color: var(--text-primary);
+                background: var(--bg-deep);
                 padding: 10px;
-                border-radius: 6px;
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
                 max-height: 200px;
                 overflow: auto;
-                font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+                font-family: 'Consolas', monospace;
             `;
             src.textContent = JSON.stringify(h._source, null, 2);
 
@@ -461,3 +398,24 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchIndices();
     loadSelectedIndex();
 });
+
+    // SEARCH ALL INDEXES CONFIGURATION
+    const searchAllIndexesCheckbox = document.getElementById('searchAllIndexes');
+
+    // Load saved setting
+    const savedSearchAll = localStorage.getItem('searchAllIndexes');
+    if (savedSearchAll === 'true') {
+        searchAllIndexesCheckbox.checked = true;
+    }
+
+    // Save setting on change
+    searchAllIndexesCheckbox.addEventListener('change', (e) => {
+        localStorage.setItem('searchAllIndexes', e.target.checked);
+        // Show validation
+        const originalText = e.target.parentElement.querySelector('span').textContent;
+        e.target.parentElement.querySelector('span').textContent = originalText + ' (Saved!)';
+        setTimeout(() => {
+            e.target.parentElement.querySelector('span').textContent = originalText;
+        }, 1500);
+    });
+

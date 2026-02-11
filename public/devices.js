@@ -31,12 +31,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Create search and pagination UI
     function createSearchAndPaginationUI() {
         const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'card';
         controlsDiv.style.cssText = `
             margin-bottom: 24px;
             display: flex;
             align-items: center;
             gap: 20px;
             flex-wrap: wrap;
+            padding: 15px; 
+            border: 1px solid var(--border-color);
         `;
 
         // Search input
@@ -46,15 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <input 
                 type="text" 
                 id="deviceSearchInput" 
+                class="search-input-mock"
                 placeholder="🔍 Search devices by name..."
-                style="
-                    width: 100%;
-                    padding: 10px 16px;
-                    border: 2px solid #e2e8f0;
-                    border-radius: 8px;
-                    font-size: 0.95rem;
-                    transition: border-color 0.2s;
-                "
             />
         `;
 
@@ -63,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paginationInfo.id = 'paginationInfo';
         paginationInfo.style.cssText = `
             font-size: 0.9rem;
-            color: #64748b;
+            color: var(--text-secondary);
             font-weight: 500;
         `;
 
@@ -108,33 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (totalPages <= 1) return;
 
-        const btnStyle = `
-            padding: 8px 14px;
-            border: 2px solid #e2e8f0;
-            background: white;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: all 0.2s;
-        `;
-
-        const disabledStyle = `
-            opacity: 0.4;
-            cursor: not-allowed;
-        `;
-
-        const activeStyle = `
-            background: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-        `;
-
         // Previous button
         const prevBtn = document.createElement('button');
         prevBtn.textContent = '← Previous';
-        prevBtn.style.cssText = btnStyle + (currentPage === 1 ? disabledStyle : '');
-        prevBtn.disabled = currentPage === 1;
+        prevBtn.className = 'pagination-btn';
+        if (currentPage === 1) prevBtn.disabled = true;
+        
         prevBtn.onclick = () => {
             if (currentPage > 1) {
                 currentPage--;
@@ -155,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (startPage > 1) {
             const firstBtn = document.createElement('button');
             firstBtn.textContent = '1';
-            firstBtn.style.cssText = btnStyle;
+            firstBtn.className = 'pagination-btn';
             firstBtn.onclick = () => {
                 currentPage = 1;
                 fetchDevices();
@@ -165,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (startPage > 2) {
                 const ellipsis = document.createElement('span');
                 ellipsis.textContent = '...';
-                ellipsis.style.cssText = 'padding: 8px; color: #64748b;';
+                ellipsis.style.cssText = 'padding: 8px; color: var(--text-secondary);';
                 paginationControls.appendChild(ellipsis);
             }
         }
@@ -173,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = startPage; i <= endPage; i++) {
             const pageBtn = document.createElement('button');
             pageBtn.textContent = i;
-            pageBtn.style.cssText = btnStyle + (i === currentPage ? activeStyle : '');
+            pageBtn.className = 'pagination-btn' + (i === currentPage ? ' active' : '');
             pageBtn.onclick = () => {
                 currentPage = i;
                 fetchDevices();
@@ -185,13 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (endPage < totalPages - 1) {
                 const ellipsis = document.createElement('span');
                 ellipsis.textContent = '...';
-                ellipsis.style.cssText = 'padding: 8px; color: #64748b;';
+                ellipsis.style.cssText = 'padding: 8px; color: var(--text-secondary);';
                 paginationControls.appendChild(ellipsis);
             }
 
             const lastBtn = document.createElement('button');
             lastBtn.textContent = totalPages;
-            lastBtn.style.cssText = btnStyle;
+            lastBtn.className = 'pagination-btn';
             lastBtn.onclick = () => {
                 currentPage = totalPages;
                 fetchDevices();
@@ -202,8 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Next button
         const nextBtn = document.createElement('button');
         nextBtn.textContent = 'Next →';
-        nextBtn.style.cssText = btnStyle + (currentPage === totalPages ? disabledStyle : '');
-        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.className = 'pagination-btn';
+        if (currentPage === totalPages) nextBtn.disabled = true;
+
         nextBtn.onclick = () => {
             if (currentPage < totalPages) {
                 currentPage++;
@@ -301,11 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDevices(devices) {
         if (!devices || devices.length === 0) {
             devicesContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📭</div>
-                    <h2>No Devices Found</h2>
-                    <p>Upload some folders to see devices here.</p>
-                    <a href="upload.html" class="btn btn-view" style="display: inline-block; margin-top: 20px; text-decoration: none;">Upload Files</a>
+                <div class="card" style="text-align: center; padding: 40px;">
+                    <div style="font-size: 3rem; margin-bottom: 20px;">📭</div>
+                    <h2 style="margin-bottom: 10px;">No Devices Found</h2>
+                    <p style="color: var(--text-secondary);">Upload some folders to see devices here.</p>
+                    <a href="upload.html" class="btn btn-primary" style="display: inline-block; margin-top: 20px; text-decoration: none;">Upload Files</a>
                 </div>
             `;
             return;
@@ -315,7 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         devices.forEach(device => {
             const card = document.createElement('div');
-            card.className = 'device-card';
+            card.className = 'card device-card';
 
             const header = document.createElement('div');
             header.className = 'device-header';

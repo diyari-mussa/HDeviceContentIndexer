@@ -8,72 +8,100 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔍 <span class="gradient-text">Search Dashboard</span></h1>
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap: wrap;">
-            <a href="upload.html" class="control-btn" style="text-decoration: none;">📤 Upload Files</a>
-            <a href="devices.html" class="control-btn" style="text-decoration: none;">📱 Devices</a>
-            <a href="crawler.html" class="control-btn" style="text-decoration: none;">🤖 Crawler</a>
-            <a href="settings.html" class="control-btn" style="text-decoration: none;">⚙️ Settings</a>
-            <div style="flex: 1; min-width: 200px;">
-                <span style="color: #64748b; font-size: 0.9rem;">Selected index:</span>
-                <strong id="selectedIndexDisplay" style="color: #2563eb;">(none)</strong>
+        <header>
+            <h1>🔍 Digital Forensic Indexer</h1>
+            <nav>
+                <ul>
+                    <li><a href="index.html" class="active">🔍 Search</a></li>
+                    <li><a href="upload.html">📤 Upload</a></li>
+                    <li><a href="devices.html">📱 Devices</a></li>
+                    <li><a href="crawler.html">🤖 Crawler</a></li>
+                    <li><a href="settings.html">⚙️ Settings</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <div class="search-container">
+            <!-- Search Type Tabs -->
+            <div class="search-tabs">
+                <div class="tab-btn active" data-tab="general">General Search</div>
+                <div class="tab-btn" data-tab="mobile">Mobile Number Search</div>
+            </div>
+
+            <!-- General Search View -->
+            <div id="generalSearchAuth" class="search-view">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="searchInput" placeholder="Enter keywords (e.g. john doe)...">
+                    <button id="searchBtn" class="btn btn-primary">SEARCH</button>
+                </div>
+                <div style="margin-bottom: 15px;">
+                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="advancedSearchToggle">
+                        <span>Wildcard / Advanced Search</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Mobile Search View -->
+            <div id="mobileSearchAuth" class="search-view" style="display: none;">
+                <div class="mobile-search-mockup">
+                    <div class="mobile-display" id="mobileDisplay">Ready.</div>
+                    <div style="padding: 20px 0;">
+                        <input type="text" id="mobileInput" placeholder="Enter phone number..." style="background: #112240; border: 1px solid #233554; color: #64ffda; text-align: center; font-size: 1.2rem; letter-spacing: 2px; width: 100%; max-width: 400px; padding: 12px; border-radius: 4px;">
+                    </div>
+                    <button id="mobileSearchBtn" class="btn btn-primary" style="width: 100%;">TRACE NUMBER</button>
+                </div>
             </div>
         </div>
 
-        <div class="search-section" style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 24px;">
-            <h3 style="color: #475569; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
-                🔍 <span>Search</span>
-            </h3>
-            <div class="search-form" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="searchInput" placeholder="Enter keywords to search..." style="flex:1; min-width: 250px; padding:12px; border:2px solid #e2e8f0; border-radius:8px; font-size: 1rem;">
-                <label style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #f1f5f9; border-radius: 8px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="advancedSearchToggle" style="width: 18px; height: 18px; cursor: pointer;">
-                    <span style="font-weight: 600; color: #475569;">🔍 Advanced Search (Substring Match)</span>
-                </label>
-                <button id="searchBtn" class="control-btn" style="padding: 12px 24px; font-size: 1rem;">🔍 Search</button>
-            </div>
-            <div id="advancedSearchInfo" style="display: none; margin-top: 12px; padding: 12px; background: #dbeafe; border-left: 4px solid #3b82f6; border-radius: 6px;">
-                <strong style="color: #1e40af;">ℹ️ Advanced Search Enabled</strong>
-                <p style="margin: 4px 0 0 0; color: #1e3a8a; font-size: 0.9rem;">• Finds partial matches (e.g., "facebook" will match "com.facebook.thing")<br>• Searches phone numbers in multiple formats automatically<br>• Uses wildcard matching for comprehensive results</p>
-            </div>
+        <!-- Selected Index Info -->
+        <div style="margin-bottom: 20px; text-align: right; color: var(--text-secondary);">
+            Current Index: <span id="selectedIndexDisplay" style="color: var(--primary-cyan); font-weight: bold;">(loading...)</span>
+            <span id="globalSearchIndicator" style="display:none; color: var(--accent-blue); margin-left: 10px;">(Searching ALL Indexes)</span>
         </div>
-            
+
         <!-- Statistics Dashboard -->
-        <div id="statisticsDashboard" style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-            <h3 style="color: #475569; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
-                📊 <span>Index Statistics</span>
-                <button id="refreshStatsBtn" style="margin-left: auto; padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">🔄 Refresh</button>
-            </h3>
-            <div id="statsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
-                <div style="text-align: center; padding: 20px; color: #64748b;">Loading statistics...</div>
+        <div id="statisticsDashboard" class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>📊 System Statistics</h3>
+                <button id="refreshStatsBtn" class="btn">🔄 Refresh</button>
+            </div>
+            <div id="statsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                <div class="loader"></div> Loading statistics...
             </div>
         </div>
             
-        <div class="search-results" id="searchResults" style="display:none; margin-top:24px;">
-            <h3 style="color: #475569; margin-bottom: 16px;">Search Results (<span id="resultCount">0</span>)</h3>
-            <div id="searchVariations" style="display:none; margin-bottom: 16px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;"></div>
-            <div id="resultsContainer" style="border:2px solid #e2e8f0; border-radius:8px; max-height:600px; overflow:auto; padding:16px; background: white;"></div>
-        </div>
+        <!-- Search Results -->
+        <div class="results-container" id="searchResults" style="display:none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <h3>Search Results (<span id="resultCount">0</span>)</h3>
+            </div>
+            
+            <div id="searchVariations" style="display:none; margin-bottom: 20px; padding: 15px; background: rgba(100, 255, 218, 0.05); border: 1px solid var(--primary-cyan); border-radius: 4px;"></div>
+            
+            <div id="resultsContainerContent">
+                <!-- Results injected here -->
+            </div>
         </div>
     </div>
 
+    <script src="search.js"></script>
     <script>
-        // Cookie helper functions
+        // Simple cookie logic
         function getCookie(name) {
             const value = `; ${document.cookie}`;
             const parts = value.split(`; ${name}=`);
             if (parts.length === 2) return parts.pop().split(';').shift();
             return null;
         }
-
-        // Load selected index from cookie
-        const selectedIndexDisplay = document.getElementById('selectedIndexDisplay');
         const cachedIndex = getCookie('selectedIndex');
-        if (cachedIndex && selectedIndexDisplay) {
-            selectedIndexDisplay.textContent = cachedIndex;
-            selectedIndexDisplay.style.color = '#2563eb';
+        const disp = document.getElementById('selectedIndexDisplay');
+        if (disp && cachedIndex) disp.innerText = cachedIndex;
+        
+        // Show global indicator
+        if (localStorage.getItem('searchAllIndexes') === 'true') {
+            document.getElementById('globalSearchIndicator').style.display = 'inline';
         }
     </script>
-    <script src="search.js"></script>
 </body>
 </html>

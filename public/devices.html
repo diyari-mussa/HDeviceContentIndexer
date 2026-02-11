@@ -3,199 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devices - Directory Indexer</title>
+    <title>Devices - Digital Forensic Indexer</title>
     <link rel="stylesheet" href="style.css">
     <style>
         .device-card {
-            background: white;
-            border: 2px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 20px;
             margin-bottom: 20px;
-            transition: all 0.3s;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        
         .device-card:hover {
-            border-color: #3b82f6;
-            box-shadow: 0 8px 16px -4px rgba(59, 130, 246, 0.2);
             transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border-color: var(--primary-cyan);
         }
-        
         .device-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 16px;
-            border-bottom: 2px solid #e2e8f0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 15px;
         }
-        
         .device-name {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 700;
-            color: #1e293b;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            color: var(--primary-cyan);
         }
-        
         .device-stats {
             display: flex;
             gap: 20px;
-            margin: 16px 0;
             flex-wrap: wrap;
+            margin-bottom: 15px;
         }
-        
         .stat-item {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 16px;
-            background: #f8fafc;
-            border-radius: 8px;
             font-size: 0.9rem;
+            color: var(--text-secondary);
         }
-        
-        .stat-label {
-            color: #64748b;
-            font-weight: 600;
-        }
-        
         .stat-value {
-            color: #1e293b;
-            font-weight: 700;
-        }
-        
-        .device-actions {
-            display: flex;
-            gap: 12px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
+            color: var(--text-primary);
             font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.2s;
         }
-        
-        .btn-view {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            color: white;
-        }
-        
-        .btn-view:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-        
-        .btn-cleanup {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: white;
-        }
-        
-        .btn-cleanup:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
-        }
-        
-        .btn-delete {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-        }
-        
-        .btn-delete:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-        }
-        
         .files-list {
-            display: none;
-            margin-top: 16px;
-            padding: 16px;
-            background: #f8fafc;
-            border-radius: 8px;
-            max-height: 400px;
+            margin-top: 15px;
+            padding: 15px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            max-height: 300px;
             overflow-y: auto;
+            display: none;
         }
-        
         .file-item {
-            padding: 8px 12px;
-            margin: 4px 0;
-            background: white;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            color: #475569;
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
-        .file-item:hover {
-            background: #e0f2fe;
+        .file-item:last-child {
+            border-bottom: none;
         }
-        
-        .loading {
-            text-align: center;
-            padding: 60px;
-            color: #64748b;
-            font-size: 1.2rem;
+        .device-actions {
+            display: flex;
+            gap: 10px;
         }
+        /* Button Variants */
+        .btn-view { background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        .btn-cleanup { background: linear-gradient(135deg, #b45309 0%, #d97706 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        .btn-delete { background: linear-gradient(135deg, #be123c 0%, #e11d48 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; }
         
-        .empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            color: #64748b;
+        .btn-view:hover, .btn-cleanup:hover, .btn-delete:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* Pagination */
+        .pagination-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 4px;
         }
-        
-        .empty-state-icon {
-            font-size: 80px;
-            margin-bottom: 20px;
+        .pagination-btn:hover:not(:disabled) {
+            border-color: var(--primary-cyan);
+            color: var(--primary-cyan);
+        }
+        .pagination-btn.active {
+            background: var(--primary-cyan);
+            color: var(--bg-deep);
+            border-color: var(--primary-cyan);
+            font-weight: bold;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .search-input-mock {
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .search-input-mock:focus {
+            outline: none;
+            border-color: var(--primary-cyan);
+            box-shadow: 0 0 5px rgba(100,255,218,0.3);
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📱 <span class="gradient-text">Devices Manager</span></h1>
-        
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap: wrap;">
-            <a href="index.html" class="control-btn" style="text-decoration: none;">🔍 Search</a>
-            <a href="upload.html" class="control-btn" style="text-decoration: none;">📤 Upload</a>
-            <a href="crawler.html" class="control-btn" style="text-decoration: none;">🤖 Crawler</a>
-            <a href="settings.html" class="control-btn" style="text-decoration: none;">⚙️ Settings</a>
-            <div style="flex: 1; min-width: 200px;">
-                <span style="color: #64748b; font-size: 0.9rem;">Selected index:</span>
-                <strong id="selectedIndexDisplay" style="color: #2563eb;">(none)</strong>
+        <header>
+            <h1>📱 Devices Index</h1>
+            <nav>
+                <ul>
+                    <li><a href="index.html">🔍 Search</a></li>
+                    <li><a href="upload.html">📤 Upload</a></li>
+                    <li><a href="devices.html" class="active">📱 Devices</a></li>
+                    <li><a href="crawler.html">🤖 Crawler</a></li>
+                    <li><a href="settings.html">⚙️ Settings</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="color: var(--text-secondary);">
+                Target Index: <span id="selectedIndexDisplay" style="color: var(--primary-cyan); font-weight: bold;">(none)</span>
+            </div>
+            <button id="refreshBtn" class="btn">🔄 Refresh List</button>
+        </div>
+
+        <div id="controlsContainer">
+            <!-- Search and Pagination injected here by JS -->
+        </div>
+
+        <div id="devicesContainer" class="devices-list">
+            <div class="card" style="text-align:center; padding: 40px;">
+                <div class="loader"></div>
+                <div style="margin-top:20px; color:var(--text-secondary);">Loading devices...</div>
             </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 24px;">
-            <button id="refreshBtn" class="control-btn">🔄 Refresh</button>
-        </div>
-
-        <div id="devicesContainer" class="loading">
-            Loading devices...
+        <div id="paginationControls">
+            <!-- Pagination buttons injected here -->
         </div>
     </div>
 
-    <script>
-        // Load selected index from cookie immediately
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
-        
-        const selectedIndexDisplay = document.getElementById('selectedIndexDisplay');
-        const cachedIndex = getCookie('selectedIndex');
-        if (cachedIndex && selectedIndexDisplay) {
-            selectedIndexDisplay.textContent = cachedIndex;
-            selectedIndexDisplay.style.color = '#2563eb';
-        }
-    </script>
     <script src="devices.js"></script>
 </body>
 </html>

@@ -95,8 +95,7 @@ function removeChecksum(folderHash, deviceId, indexName) {
   }
 }
 
-// Import file converters (only for PDF and HTML)
-const { convertPdfToMarkdown } = require('./file-processors/pdf-to-md');
+// Import file converters (only for HTML)
 const { convertHtmlToText } = require('./file-processors/html-to-md');
 const { convertExcelToMarkdown } = require('./file-processors/excel-to-md');
 
@@ -271,8 +270,6 @@ async function convertFileToMarkdown(filePath) {
 
   try {
     switch (ext) {
-      case '.pdf':
-        return await convertPdfToMarkdown(filePath);
       case '.xlsx':
       case '.xls':
         return await convertExcelToMarkdown(filePath);
@@ -902,11 +899,7 @@ app.post('/api/convert-file', multer({ dest: 'uploads/' }).single('file'), async
     // For PDF files, don't try to read as UTF-8 text
     let originalContent = '';
     try {
-      if (fileExt === '.pdf') {
-        originalContent = `[Binary PDF file - ${req.file.size} bytes]`;
-      } else {
-        originalContent = fs.readFileSync(filePath, 'utf8');
-      }
+      originalContent = fs.readFileSync(filePath, 'utf8');
     } catch (readError) {
       console.warn('Could not read original file content:', readError.message);
       originalContent = '[Unable to read file content]';
@@ -1099,122 +1092,118 @@ function generatePhoneVariations(query) {
 // API endpoint to search Elasticsearch
 app.post('/api/search', async (req, res) => {
   try {
-    let { query, index, advancedSearch } = req.body;
+    let { query, index, advancedSearch, mobileSearch, searchAllIndexes } = req.body;
 
     if (!query) {
       return res.status(400).json({ success: false, error: 'Query is required' });
     }
 
-    // If no index specified, use selected index or all
-    if (!index || index.trim() === '') {
-      index = selectedIndex || '_all';
+    // Determine Index
+    let targetIndex = index;
+    // If explicit "search all" is requested OR no index is specified/selected, use _all
+    if (searchAllIndexes === true || !targetIndex || targetIndex.trim() === '') {
+      targetIndex = '_all';
+    } else if (!targetIndex) {
+      targetIndex = selectedIndex || '_all';
     }
 
-    let searchQuery;
-    let phoneVariations = null;
-    
-    // Check if advanced search is enabled
-    if (advancedSearch) {
-      phoneVariations = generatePhoneVariations(query);
-      
-      if (phoneVariations && phoneVariations.length > 1) {
-        // Use bool query with should clauses for multiple variations (phone numbers)
-        searchQuery = {
-          index: index,
-          body: {
-            query: {
-              bool: {
-                should: phoneVariations.map(variation => ({
-                  multi_match: {
-                    query: variation,
-                    fields: ['*'],
-                    type: 'phrase'
-                  }
-                }))
-              }
-            },
-            highlight: {
-              fields: {
-                '*': {}
-              }
-            },
-            size: 50
-          }
-        };
-        
-        console.log(`Advanced search: Generated ${phoneVariations.length} variations for: ${query}`);
-        console.log('Variations:', phoneVariations);
-      } else {
-        // Advanced substring search - finds partial matches like "facebook" in "com.facebook.thing"
-        searchQuery = {
-          index: index,
-          body: {
-            query: {
-              bool: {
-                should: [
-                  // Exact phrase match (highest priority)
-                  {
-                    multi_match: {
-                      query: query,
-                      fields: ['*'],
-                      type: 'phrase',
-                      boost: 3
-                    }
-                  },
-                  // Standard word match
-                  {
-                    multi_match: {
-                      query: query,
-                      fields: ['*'],
-                      boost: 2
-                    }
-                  },
-                  // Wildcard search for substring matches (e.g., "facebook" in "com.facebook.thing")
-                  {
-                    query_string: {
-                      query: `*${query}*`,
-                      fields: ['*'],
-                      analyze_wildcard: true,
-                      boost: 1
-                    }
-                  }
-                ],
-                minimum_should_match: 1
-              }
-            },
-            highlight: {
-              fields: {
-                '*': {}
-              }
-            },
-            size: 50
-          }
-        };
-        
-        console.log(`Advanced search with substring matching for: ${query}`);
+    console.log(`Searching in index: ${targetIndex} (Search All: ${searchAllIndexes})`);
+
+    let searchQuery = {
+      index: targetIndex,
+      body: {
+        size: 50,
+        highlight: { fields: { '*': {} } }
       }
-    } else {
-      // Normal search
-      searchQuery = {
-        index: index,
-        body: {
-          query: {
+    };
+
+    let variations = [];
+
+    // --- MOBILE SEARCH LOGIC ---
+    if (mobileSearch) {
+      // Generate variations using existing helper
+      const generated = generatePhoneVariations(query);
+      variations = generated ? generated : [query];
+      
+      // also add simple variations
+      const clean = query.replace(/[^0-9]/g, '');
+      if (clean && !variations.includes(clean)) variations.push(clean);
+
+      searchQuery.body.query = {
+        bool: {
+          should: variations.map(v => ({
             multi_match: {
-              query: query,
-              fields: ['*']
+              query: v,
+              fields: ['*'],
+              type: 'phrase', 
+              boost: 2
             }
-          },
-          highlight: {
-            fields: {
-              '*': {}
-            }
-          },
-          size: 50
+          })),
+          minimum_should_match: 1
         }
       };
+      console.log('📱 Performing Mobile Search for variations:', variations);
+    } 
+    
+    // --- GENERAL SEARCH ("John Doe" -> *john* AND *doe*) ---
+    else {
+      const terms = query.trim().split(/\s+/);
+      
+      // 1. EXACT PHRASE MATCH (Top Priority)
+      const exactMatch = {
+        multi_match: {
+          query: query,
+          fields: ['*'],
+          type: 'phrase',
+          boost: 10
+        }
+      };
+
+      // 2. FUZZY / WILDCARD LOGIC
+      // "john doe" -> must correlate wildcard match for "john" AND wildcard match for "doe"
+      const wildcardMustClauses = terms.map(term => ({
+        query_string: {
+            query: `*${term}*`,
+            fields: ['*'],
+            analyze_wildcard: true
+        }
+      }));
+
+      // Combine strategies
+      searchQuery.body.query = {
+        bool: {
+          should: [
+            exactMatch,
+            {
+              bool: {
+                must: wildcardMustClauses,
+                boost: 5
+              }
+            }
+          ],
+          minimum_should_match: 1
+        }
+      };
+      console.log('🔍 Performing General / Wildcard Search for:', terms);
     }
 
-    const response = await client.search(searchQuery);
+    // EXECUTE SEARCH WITH ERROR HANDLING
+    let response;
+    try {
+        response = await client.search(searchQuery);
+    } catch (esError) {
+        console.error('Elasticsearch Search Error:', esError);
+        // Specialized Error Handling
+        if (esError.meta && esError.meta.statusCode === 429) {
+            throw new Error('Elasticsearch is overloaded (429 Too Many Requests). Please try again later.');
+        } else if (esError.message.includes('Connection refused')) {
+            throw new Error('Could not connect to Elasticsearch. Is the service running?');
+        } else if (esError.message.includes('circuit_breaking_exception')) {
+             throw new Error('Elasticsearch circuit breaker tripped. System memory is low.');
+        } else {
+            throw new Error(`Search engine error: ${esError.message}`);
+        }
+    }
 
     // Extract hits - handle different response formats
     let hits = [];
@@ -1228,10 +1217,11 @@ app.post('/api/search', async (req, res) => {
       id: hit._id,
       score: hit._score,
       source: hit._source,
-      highlight: hit.highlight
+      highlight: hit.highlight,
+      index: hit._index
     }));
 
-    // Handle different Elasticsearch response formats
+    // Handle count extraction
     let totalHits = 0;
     if (response.hits && response.hits.total) {
       // New format (v7+)
@@ -1246,7 +1236,7 @@ app.post('/api/search', async (req, res) => {
       query: query,
       total: totalHits,
       results: results,
-      variations: phoneVariations
+      variations: variations
     });
   } catch (error) {
     console.error('Search error:', error);
@@ -1709,11 +1699,23 @@ app.post('/api/crawler/scan', async (req, res) => {
       });
     }
 
-    const { forceReindex } = req.body;
-    const uploadsDir = path.join(__dirname, 'uploads');
+    const { forceReindex, customPath } = req.body;
+    
+    // Determine uploads directory
+    let uploadsDir;
+    if (customPath && typeof customPath === 'string' && customPath.trim() !== '') {
+        uploadsDir = path.resolve(customPath.trim());
+        console.log(`Using custom crawler path: ${uploadsDir}`);
+    } else {
+        uploadsDir = path.join(__dirname, 'uploads');
+        console.log(`Using default uploads path: ${uploadsDir}`);
+    }
     
     if (!fs.existsSync(uploadsDir)) {
-      return res.json({ success: true, folders: [] });
+      return res.status(404).json({ 
+          success: false, 
+          error: `Source directory not found: ${uploadsDir}` 
+      });
     }
 
     const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
@@ -1731,9 +1733,12 @@ app.post('/api/crawler/scan', async (req, res) => {
         
         // Calculate folder hash - deviceId is the folder name itself
         const deviceId = entry.name;
+        // Check if hash file exists in the directory, otherwise calculate
         const folderHash = calculateFolderHash(folderPath);
         
-        // Check if already processed in the SELECTED index (unless force reindex is enabled)
+        // Use full path for internal use, but we might want shorter display name if needed
+        // For processing, we use folderPath which is now correctly resolved
+
         let alreadyExists = false;
         if (!forceReindex) {
           const checksumExists = isFolderAlreadyProcessed(folderHash, deviceId, selectedIndex);
@@ -1900,7 +1905,7 @@ app.post('/api/crawler/crawl', async (req, res) => {
           return isAllowed;
         });
 
-        console.log(`📊 Folder ${folderName}: ${allFiles.length} total files, ${allowedFiles.length} allowed (.html/.txt/.csv/.xlsx/.pdf)`);
+        console.log(`📊 Folder ${folderName}: ${allFiles.length} total files, ${allowedFiles.length} allowed (.html/.txt/.csv/.xlsx)`);
 
         sendProgress(
           Math.round((processedFolders / totalFolders) * 100),

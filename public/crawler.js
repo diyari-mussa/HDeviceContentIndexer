@@ -84,17 +84,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const forceReindex = document.getElementById('forceReindexToggle').checked;
+        const customPath = document.getElementById('customPathInput').value.trim();
 
         scanBtn.disabled = true;
         scanBtn.textContent = '🔍 Scanning...';
-        foldersList.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b;">Scanning uploads folder...</div>';
+        foldersList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Scanning source folder...</div>';
         foldersSection.style.display = 'block';
 
         try {
             const response = await fetch('/api/crawler/scan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ forceReindex })
+                body: JSON.stringify({ forceReindex, customPath })
             });
 
             const data = await response.json();
@@ -177,54 +178,43 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderFolder(folder, index, checked, category) {
         const folderDiv = document.createElement('div');
         
-        let borderColor, bgGradient, statusIcon, statusText, statusColor;
+        let statusIcon, statusText, statusClass;
+        let itemClass = 'folder-item';
         
         if (category === 'new') {
-            borderColor = '#d1fae5';
-            bgGradient = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+            itemClass += ' new';
             statusIcon = '✅';
             statusText = `New Folder - ${folder.supportedFileCount} supported file(s)`;
-            statusColor = '#065f46';
+            statusClass = 'status-new';
         } else if (category === 'existing') {
-            borderColor = '#fde68a';
-            bgGradient = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+            itemClass += ' existing';
             statusIcon = '🔒';
             statusText = 'Already Indexed';
-            statusColor = '#92400e';
+            statusClass = 'status-existing';
         } else { // neglected
-            borderColor = '#e2e8f0';
-            bgGradient = 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)';
+            itemClass += ' neglected';
             statusIcon = '🚫';
             statusText = `No supported files (.html/.txt/.csv/.xlsx/.pdf) - ${folder.fileCount} total file(s)`;
-            statusColor = '#64748b';
+            statusClass = 'status-neglected';
         }
 
-        folderDiv.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px;
-            border: 2px solid ${borderColor};
-            background: ${bgGradient};
-            border-radius: 8px;
-            margin-bottom: 12px;
-        `;
+        folderDiv.className = itemClass;
 
         folderDiv.innerHTML = `
             <input type="checkbox" id="folder-${index}" data-folder-index="${index}" data-folder-name="${folder.name}" style="width: 20px; height: 20px; cursor: pointer;" ${checked ? 'checked' : ''} ${category === 'neglected' ? 'disabled' : ''}>
             <label for="folder-${index}" style="flex: 1; cursor: pointer; display: flex; align-items: center; gap: 12px;">
                 <span style="font-size: 24px;">${statusIcon}</span>
                 <div style="flex: 1;">
-                    <div style="font-weight: 600; color: ${statusColor}; margin-bottom: 4px;">
+                    <div class="folder-info-title ${statusClass}">
                         📁 ${folder.name}
                     </div>
-                    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
+                    <div class="folder-info-meta">
                         Device ID: <code>${folder.deviceId}</code>
                     </div>
-                    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 2px;">
+                    <div class="folder-info-meta">
                         Total Files: ${folder.fileCount} | Supported: ${folder.supportedFileCount} | Hash: <code>${folder.folderHash.substring(0, 12)}...</code>
                     </div>
-                    <div style="font-size: 0.85rem; font-weight: 600; color: ${statusColor};">
+                    <div class="folder-info-status ${statusClass}">
                         ${statusText}
                     </div>
                 </div>

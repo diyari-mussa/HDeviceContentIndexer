@@ -1,83 +1,146 @@
-document.addEventListener("DOMContentLoaded", () => {
-    // Search functionality
-    const searchInput = document.getElementById("searchInput");
-    const searchBtn = document.getElementById("searchBtn");
-    const searchResults = document.getElementById("searchResults");
-    const searchVariations = document.getElementById("searchVariations");
-    const resultCount = document.getElementById("resultCount");
-    const resultsContainer = document.getElementById("resultsContainer");
-    const advancedSearchToggle = document.getElementById("advancedSearchToggle");
-    const advancedSearchInfo = document.getElementById("advancedSearchInfo");
-    const statisticsDashboard = document.getElementById("statisticsDashboard");
-    const statsContainer = document.getElementById("statsContainer");
-    const refreshStatsBtn = document.getElementById("refreshStatsBtn");
+document.addEventListener('DOMContentLoaded', () => {
+    // Elements
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const mobileInput = document.getElementById('mobileInput');
+    const mobileSearchBtn = document.getElementById('mobileSearchBtn');
+    const mobileDisplay = document.getElementById('mobileDisplay');
     
-    // Load statistics on page load
-    loadStatistics();
+    // Containers
+    const searchResults = document.getElementById('searchResults');
+    const resultsContainer = document.getElementById('resultsContainerContent');
+    const resultCount = document.getElementById('resultCount');
+    const searchVariations = document.getElementById('searchVariations');
+    const statisticsDashboard = document.getElementById('statisticsDashboard');
+    const statsContainer = document.getElementById('statsContainer');
+    const refreshStatsBtn = document.getElementById('refreshStatsBtn');
     
-    // Refresh button handler
-    if (refreshStatsBtn) {
-        refreshStatsBtn.addEventListener('click', loadStatistics);
-    }
-    
-    // Show/hide advanced search info
-    if (advancedSearchToggle && advancedSearchInfo) {
-        advancedSearchToggle.addEventListener('change', () => {
-            advancedSearchInfo.style.display = advancedSearchToggle.checked ? 'block' : 'none';
+    // Toggles
+    const advancedSearchToggle = document.getElementById('advancedSearchToggle');
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const generalView = document.getElementById('generalSearchAuth');
+    const mobileView = document.getElementById('mobileSearchAuth');
+
+    let currentMode = 'general'; // general | mobile
+
+    // Tab Switching Logic
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            const tab = btn.dataset.tab;
+            currentMode = tab;
+            
+            if (tab === 'general') {
+                generalView.style.display = 'block';
+                mobileView.style.display = 'none';
+                if (searchInput) searchInput.focus();
+            } else {
+                generalView.style.display = 'none';
+                mobileView.style.display = 'block';
+                if (mobileInput) mobileInput.focus();
+            }
+        });
+    });
+
+    // Mobile Input Visual Feedback
+    if (mobileInput) {
+        mobileInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            mobileDisplay.textContent = val || 'Ready.';
+            mobileDisplay.style.color = val ? '#64ffda' : '#64ffda';
+            mobileDisplay.style.textShadow = val ? '0 0 10px rgba(100,255,218,0.5)' : 'none';
+        });
+        
+        mobileInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch('mobile');
         });
     }
 
-    searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') performSearch();
-    });
+    // Event Listeners
+    if (searchBtn) searchBtn.addEventListener('click', () => performSearch('general'));
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch('general');
+        });
+    }
+    
+    if (mobileSearchBtn) mobileSearchBtn.addEventListener('click', () => performSearch('mobile'));
+    if (refreshStatsBtn) refreshStatsBtn.addEventListener('click', loadStatistics);
 
-    async function performSearch() {
-        const query = searchInput.value.trim();
+    // Initial Load
+    loadStatistics();
+
+    // Check Advanced Toggle URL Param
+    const urlParams = new URLSearchParams(window.location.search);
+    if (advancedSearchToggle && urlParams.get('advanced') === 'true') {
+        advancedSearchToggle.checked = true;
+    }
+
+    // SEARCH FUNCTION
+    async function performSearch(mode) {
+        const query = mode === 'mobile' ? mobileInput.value.trim() : searchInput.value.trim();
+        
         if (!query) return;
 
-        searchBtn.disabled = true;
-        searchBtn.textContent = 'Searching...';
-        resultsContainer.innerHTML = '<div style="text-align:center; padding:20px;">Searching...</div>';
+        // UI Feedback
+        const btn = mode === 'mobile' ? mobileSearchBtn : searchBtn;
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'SEARCHING...';
+        
+        if (resultsContainer) {
+            resultsContainer.innerHTML = '<div class="loader"></div> Searching indices...';
+            searchResults.style.display = 'block';
+            statisticsDashboard.style.display = 'none';
+        }
 
         try {
-            const advancedSearch = advancedSearchToggle ? advancedSearchToggle.checked : false;
+            // Check settings
+            const searchAll = localStorage.getItem('searchAllIndexes') === 'true';
+            
+            // Build Payload
+            const payload = {
+                query,
+                advancedSearch: mode === 'general' ? (advancedSearchToggle ? advancedSearchToggle.checked : false) : false,
+                mobileSearch: mode === 'mobile',
+                searchAllIndexes: searchAll
+            };
             
             const r = await fetch('/api/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query, advancedSearch })
+                body: JSON.stringify(payload)
             });
+            
             const j = await r.json();
-
-            if (!j.success) throw new Error(j.error || 'Search failed');
-
+            
+            if (!j.success) throw new Error(j.error || 'Server error');
+            
             displaySearchResults(j.results, j.total, j.query, j.variations);
+            
         } catch (err) {
-            console.error('Search error:', err);
-            resultsContainer.innerHTML = `<div style="color:crimson; padding:20px;">Error: ${err.message}</div>`;
+            console.error('Search failed:', err);
+            if (resultsContainer) {
+                resultsContainer.innerHTML = `<div class="status-badge status-error">Error: ${err.message}</div>`;
+            }
         } finally {
-            searchBtn.disabled = false;
-            searchBtn.textContent = 'Search All Indexes';
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
     }
 
     function displaySearchResults(results, total, query, variations) {
-        // Hide statistics dashboard when showing search results
-        if (statisticsDashboard) statisticsDashboard.style.display = 'none';
+        if (resultCount) resultCount.textContent = total;
         
-        searchResults.style.display = 'block';
-        resultCount.textContent = total;
-
-        // Display variations if available
+        // Show variations (Mobile Search)
         if (searchVariations) {
             if (variations && variations.length > 0) {
                 searchVariations.style.display = 'block';
                 searchVariations.innerHTML = `
-                    <div style="font-weight:600; color:#0369a1; margin-bottom:8px;">ℹ️ Searching for phone number variations:</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                        ${variations.map(v => `<span style="background:white; padding:4px 8px; border-radius:4px; border:1px solid #bae6fd; color:#0284c7; font-family:monospace;">${v}</span>`).join('')}
-                    </div>
+                    <strong style="color:var(--primary-cyan)">ℹ️ Searching variations:</strong> 
+                    ${variations.map(v => `<code style="background:rgba(255,255,255,0.1); padding:2px 5px; margin:0 2px;">${v}</code>`).join('')}
                 `;
             } else {
                 searchVariations.style.display = 'none';
@@ -85,523 +148,121 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (total === 0) {
-            resultsContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;"><div style="font-size:64px; margin-bottom:16px;">🔍</div><div style="font-size:1.2rem; font-weight:600; margin-bottom:8px;">No results found</div><div>Try different keywords or check your spelling</div></div>';
+            resultsContainer.innerHTML = '<div style="text-align:center; padding:30px; opacity:0.7;">No results found.</div>';
             return;
         }
 
         resultsContainer.innerHTML = '';
 
-        results.forEach((result, index) => {
-            const resultDiv = document.createElement('div');
-            resultDiv.style.cssText = `
-                border: 2px solid #e2e8f0;
-                border-radius: 12px;
-                margin: 16px 0;
-                padding: 0;
-                background: white;
-                transition: all 0.3s;
-                overflow: hidden;
-            `;
+        results.forEach((res, idx) => {
+            const div = document.createElement('div');
+            div.className = 'result-item'; // Uses our new CSS
             
-            resultDiv.addEventListener('mouseenter', () => {
-                resultDiv.style.borderColor = '#3b82f6';
-                resultDiv.style.boxShadow = '0 8px 16px -4px rgba(59, 130, 246, 0.2)';
-                resultDiv.style.transform = 'translateY(-2px)';
-            });
+            const source = res.source;
+            const score = res.score ? res.score.toFixed(2) : 'N/A';
+            const fileName = escapeHtml(source.file_name || 'Unknown');
+            const deviceId = escapeHtml(source.device_id || 'Unknown');
+            const folder = escapeHtml(source.subdirectory || '/');
+            const date = source.timestamp ? new Date(source.timestamp).toLocaleString() : 'Unknown date';
+            const indexName = res.index || 'unknown-index';
             
-            resultDiv.addEventListener('mouseleave', () => {
-                resultDiv.style.borderColor = '#e2e8f0';
-                resultDiv.style.boxShadow = 'none';
-                resultDiv.style.transform = 'translateY(0)';
-            });
-
-            // Header with score and index
-            const header = document.createElement('div');
-            header.style.cssText = `
-                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-                padding: 14px 20px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            `;
-            header.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="background: rgba(255,255,255,0.2); color: white; padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 0.85rem;">
-                        #${index + 1}
-                    </span>
-                    <span style="color: white; font-weight: 600; font-size: 0.95rem;">
-                        📄 ${escapeHtml(result.source.file_name)}
-                    </span>
+            // Highlight Content
+            const contentHighlight = processHighlights(res.highlight || source.extracted_text, query, !!res.highlight);
+            
+            div.innerHTML = `
+                <a href="#" class="result-title">📄 ${fileName}</a>
+                <div class="result-meta">
+                    <span>📱 ${deviceId}</span>
+                    <span>📂 ${folder}</span>
+                    <span>📅 ${date}</span>
+                    <span style="color:var(--accent-blue)">🗂️ ${indexName}</span>
+                    <span class="status-badge status-success">Score: ${score}</span>
                 </div>
-                <span style="background: rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">
-                    ⭐ ${result.score.toFixed(2)}
-                </span>
-            `;
-            resultDiv.appendChild(header);
-
-            // Metadata section
-            const metaSection = document.createElement('div');
-            metaSection.style.cssText = `
-                padding: 12px 20px;
-                background: #f8fafc;
-                border-bottom: 1px solid #e2e8f0;
-                display: flex;
-                gap: 20px;
-                flex-wrap: wrap;
-                font-size: 0.85rem;
-            `;
-            
-            const deviceId = escapeHtml(result.source.device_id || 'Unknown');
-            const subdirectory = result.source.subdirectory ? escapeHtml(result.source.subdirectory) : 'Root';
-            const timestamp = new Date(result.source.timestamp).toLocaleString();
-            
-            metaSection.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="color: #64748b;">📱</span>
-                    <span style="color: #475569; font-weight: 600;">Device:</span>
-                    <span style="color: #1e293b;">${deviceId}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="color: #64748b;">📁</span>
-                    <span style="color: #475569; font-weight: 600;">Folder:</span>
-                    <span style="color: #1e293b;">${subdirectory}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="color: #64748b;">🕒</span>
-                    <span style="color: #475569; font-weight: 600;">Indexed:</span>
-                    <span style="color: #1e293b;">${timestamp}</span>
+                <div class="result-snippet">
+                    ${contentHighlight}
                 </div>
             `;
-            resultDiv.appendChild(metaSection);
-
-            // Check if this is an HTML file
-            const isHtmlFile = result.source.file_name && 
-                               (result.source.file_name.toLowerCase().endsWith('.html') || 
-                                result.source.file_name.toLowerCase().endsWith('.htm'));
             
-            // Create toggle buttons for HTML files
-            if (isHtmlFile && result.source.html_content) {
-                const toggleContainer = document.createElement('div');
-                toggleContainer.style.cssText = `
-                    display: flex;
-                    gap: 8px;
-                    padding: 12px 20px;
-                    background: #f8fafc;
-                    border-bottom: 1px solid #e2e8f0;
-                `;
-                
-                const textBtn = document.createElement('button');
-                textBtn.textContent = '📝 Text View';
-                textBtn.style.cssText = `
-                    padding: 8px 16px;
-                    border: 2px solid #3b82f6;
-                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-                    color: white;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    font-size: 0.875rem;
-                    transition: all 0.2s;
-                `;
-                
-                const htmlBtn = document.createElement('button');
-                htmlBtn.textContent = '🌐 HTML View';
-                htmlBtn.style.cssText = `
-                    padding: 8px 16px;
-                    border: 2px solid #e2e8f0;
-                    background: white;
-                    color: #64748b;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    font-size: 0.875rem;
-                    transition: all 0.2s;
-                `;
-                
-                toggleContainer.appendChild(textBtn);
-                toggleContainer.appendChild(htmlBtn);
-                resultDiv.appendChild(toggleContainer);
-                
-                // Content container
-                const contentDiv = document.createElement('div');
-                contentDiv.style.cssText = `
-                    padding: 20px;
-                    line-height: 1.7;
-                    color: #1e293b;
-                `;
-                
-                // Get text content
-                let textContent = '';
-                let hasHighlight = false;
-                
-                if (result.highlight) {
-                    if (result.highlight.extracted_text && result.highlight.extracted_text.length > 0) {
-                        textContent = result.highlight.extracted_text.join(' ... ');
-                        hasHighlight = true;
-                    } else if (result.highlight.html_content && result.highlight.html_content.length > 0) {
-                        textContent = result.highlight.html_content.join(' ... ');
-                        hasHighlight = true;
-                    }
-                }
-                
-                if (!hasHighlight) {
-                    const fullText = result.source.extracted_text || stripHtmlTags(result.source.html_content) || 'No content available';
-                    textContent = createExcerpt(fullText, query, 400);
-                }
-                
-                // Text view content (with highlights)
-                const textViewDiv = document.createElement('div');
-                textViewDiv.style.cssText = `
-                    max-height: 300px;
-                    overflow-y: auto;
-                `;
-                const processedContent = processHighlights(textContent, query, hasHighlight);
-                textViewDiv.innerHTML = processedContent;
-                contentDiv.appendChild(textViewDiv);
-                
-                // HTML rendered view (initially hidden)
-                const htmlViewDiv = document.createElement('div');
-                htmlViewDiv.style.cssText = `
-                    max-height: 500px;
-                    overflow-y: auto;
-                    display: none;
-                    border: 2px solid #e2e8f0;
-                    border-radius: 8px;
-                    background: white;
-                    padding: 16px;
-                `;
-                
-                const htmlContent = result.source.html_content || '';
-                htmlViewDiv.innerHTML = htmlContent;
-                highlightInElement(htmlViewDiv, query);
-                contentDiv.appendChild(htmlViewDiv);
-                
-                resultDiv.appendChild(contentDiv);
-                
-                // Toggle functionality
-                textBtn.addEventListener('click', () => {
-                    textViewDiv.style.display = 'block';
-                    htmlViewDiv.style.display = 'none';
-                    textBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
-                    textBtn.style.color = 'white';
-                    textBtn.style.borderColor = '#3b82f6';
-                    htmlBtn.style.background = 'white';
-                    htmlBtn.style.color = '#64748b';
-                    htmlBtn.style.borderColor = '#e2e8f0';
-                });
-                
-                htmlBtn.addEventListener('click', () => {
-                    textViewDiv.style.display = 'none';
-                    htmlViewDiv.style.display = 'block';
-                    htmlBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
-                    htmlBtn.style.color = 'white';
-                    htmlBtn.style.borderColor = '#3b82f6';
-                    textBtn.style.background = 'white';
-                    textBtn.style.color = '#64748b';
-                    textBtn.style.borderColor = '#e2e8f0';
-                });
-            } else {
-                // Non-HTML files: just show text
-                const contentDiv = document.createElement('div');
-                contentDiv.style.cssText = `
-                    padding: 20px;
-                    max-height: 300px;
-                    overflow-y: auto;
-                    line-height: 1.7;
-                    color: #1e293b;
-                `;
-                
-                let textContent = '';
-                let hasHighlight = false;
-                
-                if (result.highlight) {
-                    if (result.highlight.extracted_text && result.highlight.extracted_text.length > 0) {
-                        textContent = result.highlight.extracted_text.join(' ... ');
-                        hasHighlight = true;
-                    } else if (result.highlight.html_content && result.highlight.html_content.length > 0) {
-                        textContent = result.highlight.html_content.join(' ... ');
-                        hasHighlight = true;
-                    }
-                }
-                
-                if (!hasHighlight) {
-                    const fullText = result.source.extracted_text || stripHtmlTags(result.source.html_content) || 'No content available';
-                    textContent = createExcerpt(fullText, query, 400);
-                }
-                
-                const processedContent = processHighlights(textContent, query, hasHighlight);
-                contentDiv.innerHTML = processedContent;
-                resultDiv.appendChild(contentDiv);
-            }
-
-            resultsContainer.appendChild(resultDiv);
+            resultsContainer.appendChild(div);
         });
     }
 
-    // Helper function to highlight search terms in rendered HTML
-    function highlightInElement(element, searchTerm) {
-        const walker = document.createTreeWalker(
-            element,
-            NodeFilter.SHOW_TEXT,
-            null,
-            false
-        );
-        
-        const nodesToReplace = [];
-        let node;
-        
-        while (node = walker.nextNode()) {
-            if (node.nodeValue.toLowerCase().includes(searchTerm.toLowerCase())) {
-                nodesToReplace.push(node);
-            }
-        }
-        
-        nodesToReplace.forEach(node => {
-            const span = document.createElement('span');
-            const regex = new RegExp(`(${escapeRegex(searchTerm)})`, 'gi');
-            span.innerHTML = escapeHtml(node.nodeValue).replace(
-                regex, 
-                '<mark style="background: linear-gradient(135deg, #fef08a 0%, #fde047 100%); padding: 2px 4px; border-radius: 3px; font-weight: 600; color: #854d0e;">$1</mark>'
-            );
-            node.parentNode.replaceChild(span, node);
-        });
-    }
-
-    // Helper function to escape HTML
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // Helper function to strip HTML tags
-    function stripHtmlTags(html) {
-        const div = document.createElement('div');
-        div.innerHTML = html;
-        return div.textContent || div.innerText || '';
-    }
-
-    // Helper function to create excerpt around search term
-    function createExcerpt(text, searchTerm, maxLength = 400) {
-        if (!text) return 'No content available';
-        
-        const lowerText = text.toLowerCase();
-        const lowerTerm = searchTerm.toLowerCase();
-        const index = lowerText.indexOf(lowerTerm);
-        
-        if (index === -1) {
-            // Search term not found, return beginning
-            return text.substring(0, maxLength) + (text.length > maxLength ? '...' : '');
-        }
-        
-        // Calculate excerpt bounds with context
-        const contextSize = Math.floor(maxLength / 2);
-        let start = Math.max(0, index - contextSize);
-        let end = Math.min(text.length, index + searchTerm.length + contextSize);
-        
-        // Adjust to word boundaries
-        if (start > 0) {
-            const spaceIndex = text.lastIndexOf(' ', start);
-            if (spaceIndex > 0 && spaceIndex > start - 50) {
-                start = spaceIndex + 1;
-            }
-        }
-        
-        if (end < text.length) {
-            const spaceIndex = text.indexOf(' ', end);
-            if (spaceIndex > 0 && spaceIndex < end + 50) {
-                end = spaceIndex;
-            }
-        }
-        
-        const prefix = start > 0 ? '...' : '';
-        const suffix = end < text.length ? '...' : '';
-        
-        return prefix + text.substring(start, end) + suffix;
-    }
-
-    // Helper function to process and highlight text
-    function processHighlights(text, query, hasElasticHighlight) {
-        if (!text) return '<div style="color: #94a3b8; font-style: italic;">No content available</div>';
-        
-        // If Elasticsearch provided highlights with <em> tags, convert them to our styling
-        if (hasElasticHighlight) {
-            text = text.replace(/<em>/gi, '<mark style="background: linear-gradient(135deg, #fef08a 0%, #fde047 100%); padding: 2px 4px; border-radius: 3px; font-weight: 600; color: #854d0e;">');
-            text = text.replace(/<\/em>/gi, '</mark>');
-        } else {
-            // Manual highlighting
-            const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-            text = escapeHtml(text).replace(regex, '<mark style="background: linear-gradient(135deg, #fef08a 0%, #fde047 100%); padding: 2px 4px; border-radius: 3px; font-weight: 600; color: #854d0e;">$1</mark>');
-        }
-        
-        return `<div style="white-space: pre-wrap; word-wrap: break-word;">${text}</div>`;
-    }
-
-    // Helper function to escape regex special characters
-    function escapeRegex(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-    
-    // Load statistics function
+    // Stats Logic
     async function loadStatistics() {
         if (!statsContainer) return;
-        
-        statsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b; grid-column: 1 / -1;">Loading statistics...</div>';
+        statsContainer.innerHTML = '<div class="loader"></div> Loading stats...';
         
         try {
-            const response = await fetch('/api/statistics');
-            const data = await response.json();
+            const r = await fetch('/api/statistics');
+            const d = await r.json();
             
-            if (!data.success) throw new Error(data.error || 'Failed to load statistics');
-            
-            displayStatistics(data.stats);
-        } catch (error) {
-            console.error('Error loading statistics:', error);
-            statsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #ef4444; grid-column: 1 / -1;">⚠️ Failed to load statistics</div>';
+            if (d.success) {
+                renderStats(d.stats);
+            } else {
+                statsContainer.innerHTML = 'Failed to load stats';
+            }
+        } catch (e) {
+            statsContainer.innerHTML = 'Connection error';
         }
     }
-    
-    function displayStatistics(stats) {
+
+    function renderStats(stats) {
         statsContainer.innerHTML = '';
         
-        // Total Documents Card
-        const docsCard = createStatCard(
-            '📄',
-            'Total Documents',
-            stats.totalDocuments?.toLocaleString() || '0',
-            '#3b82f6'
-        );
-        statsContainer.appendChild(docsCard);
+        const metrics = [
+            { icon: '📄', label: 'Documents', value: stats.totalDocuments },
+            { icon: '📱', label: 'Devices', value: stats.totalDevices },
+            { icon: '🗂️', label: 'Indexes', value: stats.totalIndexes },
+            { icon: '💾', label: 'Storage', value: formatBytes(stats.totalStorageBytes) }
+        ];
         
-        // Total Devices Card
-        const devicesCard = createStatCard(
-            '📱',
-            'Total Devices',
-            stats.totalDevices?.toLocaleString() || '0',
-            '#10b981'
-        );
-        statsContainer.appendChild(devicesCard);
-        
-        // Total Indexes Card
-        const indexesCard = createStatCard(
-            '🗂️',
-            'Total Indexes',
-            stats.totalIndexes?.toLocaleString() || '0',
-            '#f59e0b'
-        );
-        statsContainer.appendChild(indexesCard);
-        
-        // Storage Size Card
-        const storageCard = createStatCard(
-            '💾',
-            'Total Storage',
-            formatBytes(stats.totalStorageBytes || 0),
-            '#8b5cf6'
-        );
-        statsContainer.appendChild(storageCard);
-        
-        // Recent Activity Card
-        if (stats.recentDocuments && stats.recentDocuments.length > 0) {
-            const activityCard = document.createElement('div');
-            activityCard.style.cssText = `
-                background: white;
-                border: 2px solid #e2e8f0;
-                border-radius: 12px;
-                padding: 20px;
-                grid-column: 1 / -1;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        metrics.forEach(m => {
+            const el = document.createElement('div');
+            el.className = 'card';
+            el.innerHTML = `
+                <div style="font-size:2rem; margin-bottom:5px;">${m.icon}</div>
+                <div style="color:var(--text-secondary); font-size:0.9rem;">${m.label}</div>
+                <div style="color:var(--primary-cyan); font-size:1.5rem; font-weight:bold;">${m.value}</div>
             `;
-            
-            activityCard.innerHTML = `
-                <h4 style="margin: 0 0 16px 0; color: #475569; display: flex; align-items: center; gap: 8px;">
-                    <span>🕒</span> Recent Activity
-                </h4>
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    ${stats.recentDocuments.slice(0, 5).map(doc => `
-                        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #3b82f6;">
-                            <span style="font-size: 1.5rem;">📄</span>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(doc.file_name || 'Unknown')}</div>
-                                <div style="font-size: 0.85rem; color: #64748b;">Device: ${escapeHtml(doc.device_id || 'Unknown')} • ${new Date(doc.timestamp).toLocaleDateString()}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-            
-            statsContainer.appendChild(activityCard);
-        }
-        
-        // Top Devices Card
-        if (stats.topDevices && stats.topDevices.length > 0) {
-            const topDevicesCard = document.createElement('div');
-            topDevicesCard.style.cssText = `
-                background: white;
-                border: 2px solid #e2e8f0;
-                border-radius: 12px;
-                padding: 20px;
-                grid-column: 1 / -1;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            `;
-            
-            topDevicesCard.innerHTML = `
-                <h4 style="margin: 0 0 16px 0; color: #475569; display: flex; align-items: center; gap: 8px;">
-                    <span>📱</span> Top Devices by Document Count
-                </h4>
-                <div style="display: grid; gap: 8px;">
-                    ${stats.topDevices.slice(0, 5).map((device, index) => {
-                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
-                        const color = colors[index % colors.length];
-                        return `
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="min-width: 30px; text-align: center; font-weight: 700; color: ${color};">#${index + 1}</div>
-                                <div style="flex: 1; background: #f8fafc; padding: 10px 16px; border-radius: 8px; border-left: 4px solid ${color};">
-                                    <div style="font-weight: 600; color: #1e293b;">${escapeHtml(device.device_id)}</div>
-                                    <div style="font-size: 0.85rem; color: #64748b;">${device.doc_count.toLocaleString()} documents</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-            
-            statsContainer.appendChild(topDevicesCard);
-        }
-    }
-    
-    function createStatCard(icon, label, value, color) {
-        const card = document.createElement('div');
-        card.style.cssText = `
-            background: linear-gradient(135deg, ${color} 0%, ${color}dd 100%);
-            color: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        `;
-        
-        card.innerHTML = `
-            <div style="font-size: 2.5rem; margin-bottom: 8px;">${icon}</div>
-            <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 4px;">${label}</div>
-            <div style="font-size: 2rem; font-weight: 700;">${value}</div>
-        `;
-        
-        card.addEventListener('mouseenter', () => {
-            card.style.transform = 'translateY(-4px)';
+            statsContainer.appendChild(el);
         });
-        
-        card.addEventListener('mouseleave', () => {
-            card.style.transform = 'translateY(0)';
-        });
-        
-        return card;
     }
-    
+
+    // Helpers
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     function formatBytes(bytes) {
-        if (bytes === 0) return '0 Bytes';
+        if (bytes === 0) return '0 B';
         const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const s = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
+    }
+
+    function processHighlights(text, query, hasElasticHighlight) {
+        if (!text) return 'No content preview';
+        let display = text;
+        
+        if (typeof text === 'object') { 
+            // Handle array of highlights
+             display = Object.values(text).flat().join(' ... ');
+        }
+        
+        if (hasElasticHighlight) {
+            // ES returns <em> tags. We replace them with our highlight style
+             return display.replace(/<em>/g, '<em style="background:rgba(100,255,218,0.3); color:#fff; font-style:normal; padding:2px;">').replace(/<\/em>/g, '</em>');
+        }
+        
+        // Truncate if too long (simple approach)
+        if (display.length > 500) return display.substring(0, 500) + '...';
+        return display;
     }
 });
