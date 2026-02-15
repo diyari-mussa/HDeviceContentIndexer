@@ -22,6 +22,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const mobileView = document.getElementById('mobileSearchAuth');
 
     let currentMode = 'general'; // general | mobile
+    let currentPage = 1;
+    let currentQuery = '';
+    let currentTotalPages = 0;
+    let currentTotal = 0;
+
+    // Get page size from settings (default 20)
+    function getPageSize() {
+        return parseInt(localStorage.getItem('resultsPerPage')) || 20;
+    }
 
     // Tab Switching Logic
     tabBtns.forEach(btn => {
@@ -79,10 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // SEARCH FUNCTION
-    async function performSearch(mode) {
+    async function performSearch(mode, page = 1) {
         const query = mode === 'mobile' ? mobileInput.value.trim() : searchInput.value.trim();
         
         if (!query) return;
+
+        currentMode = mode;
+        currentQuery = query;
+        currentPage = page;
 
         // UI Feedback
         const btn = mode === 'mobile' ? mobileSearchBtn : searchBtn;
@@ -99,13 +112,16 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             // Check settings
             const searchAll = localStorage.getItem('searchAllIndexes') === 'true';
+            const pageSize = getPageSize();
             
             // Build Payload
             const payload = {
                 query,
                 advancedSearch: mode === 'general' ? (advancedSearchToggle ? advancedSearchToggle.checked : false) : false,
                 mobileSearch: mode === 'mobile',
-                searchAllIndexes: searchAll
+                searchAllIndexes: searchAll,
+                page: page,
+                pageSize: pageSize
             };
             
             const r = await fetch('/api/search', {
@@ -117,8 +133,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const j = await r.json();
             
             if (!j.success) throw new Error(j.error || 'Server error');
+
+            currentTotalPages = j.totalPages || 1;
+            currentTotal = j.total;
             
-            displaySearchResults(j.results, j.total, j.query, j.variations);
+            displaySearchResults(j.results, j.total, j.query, j.variations, j.page, j.totalPages, j.pageSize);
             
         } catch (err) {
             console.error('Search failed:', err);
@@ -131,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function displaySearchResults(results, total, query, variations) {
+    function displaySearchResults(results, total, query, variations, page, totalPages, pageSize) {
         if (resultCount) resultCount.textContent = total;
         
         // Show variations (Mobile Search)
@@ -154,6 +173,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         resultsContainer.innerHTML = '';
 
+        // Page info header
+        const startItem = (page - 1) * pageSize + 1;
+        const endItem = Math.min(page * pageSize, total);
+        const pageInfo = document.createElement('div');
+        pageInfo.style.cssText = 'text-align:center; padding:10px; margin-bottom:15px; color:var(--text-secondary); font-size:0.9rem; border-bottom:1px solid var(--border-color);';
+        pageInfo.innerHTML = `Showing <strong style="color:var(--primary-cyan)">${startItem}-${endItem}</strong> of <strong style="color:var(--primary-cyan)">${total}</strong> results (Page ${page} of ${totalPages})`;
+        resultsContainer.appendChild(pageInfo);
+
         results.forEach((res, idx) => {
             const div = document.createElement('div');
             div.className = 'result-item'; // Uses our new CSS
@@ -163,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const fileName = escapeHtml(source.file_name || 'Unknown');
             const deviceId = escapeHtml(source.device_id || 'Unknown');
             const folder = escapeHtml(source.subdirectory || '/');
+            const fullPath = escapeHtml(source.full_path || '');
             const date = source.timestamp ? new Date(source.timestamp).toLocaleString() : 'Unknown date';
             const indexName = res.index || 'unknown-index';
             
@@ -178,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span style="color:var(--accent-blue)">🗂️ ${indexName}</span>
                     <span class="status-badge status-success">Score: ${score}</span>
                 </div>
+                ${fullPath ? `<div class="result-path" style="margin:6px 0; padding:6px 10px; background:rgba(100,255,218,0.05); border:1px solid var(--border-color); border-radius:4px; font-family:'Consolas',monospace; font-size:0.8rem; color:var(--text-secondary); word-break:break-all;">📁 ${fullPath}</div>` : ''}
                 <div class="result-snippet">
                     ${contentHighlight}
                 </div>
@@ -185,6 +214,80 @@ document.addEventListener('DOMContentLoaded', () => {
             
             resultsContainer.appendChild(div);
         });
+
+        // Pagination controls
+        if (totalPages > 1) {
+            const paginationDiv = document.createElement('div');
+            paginationDiv.style.cssText = 'display:flex; justify-content:center; align-items:center; gap:8px; padding:20px 0; margin-top:15px; border-top:1px solid var(--border-color); flex-wrap:wrap;';
+
+            // Previous button
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'btn';
+            prevBtn.textContent = '← Previous';
+            prevBtn.disabled = page <= 1;
+            prevBtn.style.cssText = 'padding:8px 16px; cursor:pointer; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-dark); color:var(--text-primary); font-size:0.9rem;';
+            if (page <= 1) prevBtn.style.opacity = '0.4';
+            prevBtn.addEventListener('click', () => performSearch(currentMode, page - 1));
+            paginationDiv.appendChild(prevBtn);
+
+            // Page number buttons
+            const maxButtons = 7;
+            let startPage = Math.max(1, page - Math.floor(maxButtons / 2));
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            if (endPage - startPage + 1 < maxButtons) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+
+            if (startPage > 1) {
+                const firstBtn = createPageBtn(1, page);
+                paginationDiv.appendChild(firstBtn);
+                if (startPage > 2) {
+                    const dots = document.createElement('span');
+                    dots.textContent = '...';
+                    dots.style.cssText = 'color:var(--text-secondary); padding:0 4px;';
+                    paginationDiv.appendChild(dots);
+                }
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = createPageBtn(i, page);
+                paginationDiv.appendChild(pageBtn);
+            }
+
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    const dots = document.createElement('span');
+                    dots.textContent = '...';
+                    dots.style.cssText = 'color:var(--text-secondary); padding:0 4px;';
+                    paginationDiv.appendChild(dots);
+                }
+                const lastBtn = createPageBtn(totalPages, page);
+                paginationDiv.appendChild(lastBtn);
+            }
+
+            // Next button
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'btn';
+            nextBtn.textContent = 'Next →';
+            nextBtn.disabled = page >= totalPages;
+            nextBtn.style.cssText = 'padding:8px 16px; cursor:pointer; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-dark); color:var(--text-primary); font-size:0.9rem;';
+            if (page >= totalPages) nextBtn.style.opacity = '0.4';
+            nextBtn.addEventListener('click', () => performSearch(currentMode, page + 1));
+            paginationDiv.appendChild(nextBtn);
+
+            resultsContainer.appendChild(paginationDiv);
+        }
+    }
+
+    // Helper to create page number button
+    function createPageBtn(pageNum, currentPage) {
+        const btn = document.createElement('button');
+        btn.textContent = pageNum;
+        btn.style.cssText = `padding:6px 12px; cursor:pointer; border-radius:4px; border:1px solid var(--border-color); font-size:0.9rem; min-width:36px; ${pageNum === currentPage ? 'background:var(--primary-cyan); color:var(--bg-deep); font-weight:bold; border-color:var(--primary-cyan);' : 'background:var(--bg-dark); color:var(--text-primary);'}`;
+        if (pageNum !== currentPage) {
+            btn.addEventListener('click', () => performSearch(currentMode, pageNum));
+        }
+        return btn;
     }
 
     // Stats Logic

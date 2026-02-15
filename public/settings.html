@@ -134,6 +134,17 @@
                     <input type="checkbox" id="searchAllIndexes" style="width: auto;">
                     <span style="color: var(--text-primary); font-weight: 500;">Search ALL indexes by default (ignores selected index)</span>
                 </label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                    <label for="resultsPerPage" style="color: var(--text-primary); font-weight: 500; white-space: nowrap;">Results per page:</label>
+                    <select id="resultsPerPage" style="padding:8px 12px; background:var(--bg-deep); border:1px solid var(--border-color); color:var(--text-primary); border-radius:4px; font-size:0.95rem; cursor:pointer;">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                    <span id="pageSizeSaved" style="color:var(--primary-green); font-size:0.85rem; opacity:0; transition:opacity 0.3s;">Saved!</span>
+                </div>
             </div>
         </div>
 

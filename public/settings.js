@@ -419,3 +419,24 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 1500);
     });
 
+    // RESULTS PER PAGE CONFIGURATION
+    const resultsPerPageSelect = document.getElementById('resultsPerPage');
+    const pageSizeSaved = document.getElementById('pageSizeSaved');
+
+    // Load saved page size
+    const savedPageSize = localStorage.getItem('resultsPerPage');
+    if (savedPageSize && resultsPerPageSelect) {
+        resultsPerPageSelect.value = savedPageSize;
+    }
+
+    // Save page size on change
+    if (resultsPerPageSelect) {
+        resultsPerPageSelect.addEventListener('change', (e) => {
+            localStorage.setItem('resultsPerPage', e.target.value);
+            if (pageSizeSaved) {
+                pageSizeSaved.style.opacity = '1';
+                setTimeout(() => { pageSizeSaved.style.opacity = '0'; }, 1500);
+            }
+        });
+    }
+

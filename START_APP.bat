@@ -33,7 +33,7 @@ echo Server started!
 echo.
 echo Opening application in browser...
 echo.
-echo Application URL: http://localhost:3000
+echo Application URL: http://localhost:3001
 echo.
 echo ========================================
 echo   Application is running!
@@ -44,7 +44,7 @@ echo or close this window to exit
 echo.
 
 REM Open in default browser
-start http://localhost:3000
+start http://localhost:3001
 
 REM Keep window open
 pause >nul

@@ -5,7 +5,7 @@
 ### Option 1: Simple Batch File (Recommended)
 1. Double-click `START_APP.bat`
 2. Wait 15-20 seconds for Elasticsearch to initialize
-3. Browser opens automatically at `http://localhost:3000`
+3. Browser opens automatically at `http://localhost:3001`
 4. To stop: Close the console window or run `STOP_APP.bat`
 
 ### Option 2: Manual Start
@@ -18,7 +18,7 @@
    ```
    npm start
    ```
-4. Open browser: http://localhost:3000
+4. Open browser: http://localhost:3001
 
 ## Features Overview
 

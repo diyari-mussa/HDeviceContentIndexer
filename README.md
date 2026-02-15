@@ -62,7 +62,7 @@ View all indexed devices, manage files, and cleanup storage.
 
 1. Double-click `START_APP.bat`
 2. Wait 15-20 seconds for Elasticsearch to start
-3. Browser will open automatically at `http://localhost:3000`
+3. Browser will open automatically at `http://localhost:3001`
 4. Go to **Settings** to create your first index
 5. Upload folders and start searching!
 

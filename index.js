@@ -100,7 +100,7 @@ const { convertHtmlToText } = require('./file-processors/html-to-md');
 const { convertExcelToMarkdown } = require('./file-processors/excel-to-md');
 
 const app = express();
-const port = 3000;
+const port = 3001;
 
 // Elasticsearch client configuration
 const client = new Client({
@@ -1092,11 +1092,16 @@ function generatePhoneVariations(query) {
 // API endpoint to search Elasticsearch
 app.post('/api/search', async (req, res) => {
   try {
-    let { query, index, advancedSearch, mobileSearch, searchAllIndexes } = req.body;
+    let { query, index, advancedSearch, mobileSearch, searchAllIndexes, page, pageSize } = req.body;
 
     if (!query) {
       return res.status(400).json({ success: false, error: 'Query is required' });
     }
+
+    // Pagination defaults
+    const currentPage = Math.max(1, parseInt(page) || 1);
+    const resultsPerPage = Math.min(200, Math.max(1, parseInt(pageSize) || 20));
+    const from = (currentPage - 1) * resultsPerPage;
 
     // Determine Index
     let targetIndex = index;
@@ -1107,12 +1112,14 @@ app.post('/api/search', async (req, res) => {
       targetIndex = selectedIndex || '_all';
     }
 
-    console.log(`Searching in index: ${targetIndex} (Search All: ${searchAllIndexes})`);
+    console.log(`Searching in index: ${targetIndex} (Search All: ${searchAllIndexes}, Page: ${currentPage}, PageSize: ${resultsPerPage})`);
 
     let searchQuery = {
       index: targetIndex,
       body: {
-        size: 50,
+        from: from,
+        size: resultsPerPage,
+        track_total_hits: true,
         highlight: { fields: { '*': {} } }
       }
     };
@@ -1231,12 +1238,17 @@ app.post('/api/search', async (req, res) => {
       totalHits = response.hits.total || 0;
     }
 
+    const totalPages = Math.ceil(totalHits / resultsPerPage);
+
     res.json({
       success: true,
       query: query,
       total: totalHits,
       results: results,
-      variations: variations
+      variations: variations,
+      page: currentPage,
+      pageSize: resultsPerPage,
+      totalPages: totalPages
     });
   } catch (error) {
     console.error('Search error:', error);
