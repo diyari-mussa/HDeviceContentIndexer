@@ -789,7 +789,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadChecksums() {
-        checksumsContent.innerHTML = '<div style="text-align:center; padding:20px; color:#64748b;">Loading checksums...</div>';
+        checksumsContent.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-secondary);">Loading checksums...</div>';
         
         try {
             const response = await fetch('/api/checksums');
@@ -807,7 +807,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function displayChecksums(checksums) {
         if (!checksums || checksums.length === 0) {
-            checksumsContent.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;"><div style="font-size:48px; margin-bottom:10px;">📭</div><div>No uploaded folders yet</div></div>';
+            checksumsContent.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-secondary);"><div style="font-size:48px; margin-bottom:10px;">📭</div><div>No uploaded folders yet</div></div>';
             return;
         }
 
@@ -818,30 +818,30 @@ document.addEventListener("DOMContentLoaded", () => {
             const formattedDate = date.toLocaleString();
             
             html += `
-                <div style="border: 2px solid #e2e8f0; border-radius:8px; padding:16px; background:white; transition: all 0.2s;" 
-                     onmouseover="this.style.borderColor='#2563eb'; this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1)'" 
-                     onmouseout="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                <div style="border: 1px solid var(--border-color); border-radius:8px; padding:16px; background:var(--bg-card); transition: all 0.2s;" 
+                     onmouseover="this.style.borderColor='var(--primary-cyan)'; this.style.boxShadow='0 0 10px rgba(100,255,218,0.1)'" 
+                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'">
                     <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
                         <div style="flex:1;">
-                            <div style="font-weight:600; font-size:1.1rem; color:#1e293b; margin-bottom:4px;">
+                            <div style="font-weight:600; font-size:1.1rem; color:var(--primary-cyan); margin-bottom:4px;">
                                 📁 ${escapeHtml(item.folderName)}
                             </div>
-                            <div style="font-size:0.85rem; color:#64748b;">
-                                Device ID: <span style="font-family:monospace; background:#f1f5f9; padding:2px 6px; border-radius:4px;">${escapeHtml(item.deviceId)}</span>
+                            <div style="font-size:0.85rem; color:var(--text-secondary);">
+                                Device ID: <span style="font-family:monospace; background:var(--bg-dark); padding:2px 6px; border-radius:4px; color:var(--text-primary); border:1px solid var(--border-color);">${escapeHtml(item.deviceId)}</span>
                             </div>
                         </div>
                         <button class="delete-checksum-btn" data-key="${escapeHtml(item.key)}" 
-                                style="background:#fee2e2; color:#dc2626; border:1px solid #fecaca; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600; transition: all 0.2s;"
-                                onmouseover="this.style.background='#fecaca'" 
-                                onmouseout="this.style.background='#fee2e2'">
-                            🗑️ Delete
+                                style="background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600; transition: all 0.2s;"
+                                onmouseover="this.style.background='rgba(239,68,68,0.2)'; this.style.borderColor='#ef4444'" 
+                                onmouseout="this.style.background='rgba(239,68,68,0.1)'; this.style.borderColor='rgba(239,68,68,0.3)'">
+                            🗑️ DELETE
                         </button>
                     </div>
-                    <div style="display:grid; grid-template-columns:auto 1fr; gap:8px; font-size:0.85rem; color:#64748b; margin-bottom:8px;">
+                    <div style="display:grid; grid-template-columns:auto 1fr; gap:8px; font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">
                         <span>Uploaded:</span>
-                        <span>${formattedDate}</span>
+                        <span style="color:var(--text-primary);">${formattedDate}</span>
                         <span>Checksum:</span>
-                        <span style="font-family:monospace; font-size:0.75rem; word-break:break-all; background:#f1f5f9; padding:4px 6px; border-radius:4px;">${item.hash.substring(0, 16)}...${item.hash.substring(item.hash.length - 16)}</span>
+                        <span style="font-family:monospace; font-size:0.75rem; word-break:break-all; background:var(--bg-dark); padding:4px 6px; border-radius:4px; color:var(--text-secondary); border:1px solid var(--border-color);">${item.hash.substring(0, 16)}...${item.hash.substring(item.hash.length - 16)}</span>
                     </div>
                 </div>
             `;

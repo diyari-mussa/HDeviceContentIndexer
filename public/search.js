@@ -131,6 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             const j = await r.json();
+            console.log('[Search] Response received - success:', j.success, 'total:', j.total, 'results count:', (j.results || []).length, 'page:', j.page, 'totalPages:', j.totalPages);
+            if (j.results && j.results.length > 0) {
+                console.log('[Search] First result sample:', { id: j.results[0].id, hasHighlight: !!j.results[0].highlight, highlightKeys: j.results[0].highlight ? Object.keys(j.results[0].highlight) : [], hasSource: !!j.results[0].source, sourceKeys: j.results[0].source ? Object.keys(j.results[0].source) : [] });
+            }
             
             if (!j.success) throw new Error(j.error || 'Server error');
 
@@ -195,7 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const indexName = res.index || 'unknown-index';
             
             // Highlight Content
-            const contentHighlight = processHighlights(res.highlight || source.extracted_text, query, !!res.highlight);
+            // Use highlight only if it's a non-empty object
+            const hasValidHighlight = res.highlight && typeof res.highlight === 'object' && Object.keys(res.highlight).length > 0;
+            const highlightSource = hasValidHighlight ? res.highlight : source.extracted_text;
+            console.log('[displayResult]', fileName, '- hasHighlight:', !!res.highlight, 'hasValidHighlight:', hasValidHighlight, 'has extracted_text:', !!source.extracted_text, 'extracted_text length:', (source.extracted_text || '').length);
+            const contentHighlight = processHighlights(highlightSource, query, hasValidHighlight);
             
             div.innerHTML = `
                 <a href="#" class="result-title">📄 ${fileName}</a>
@@ -351,21 +359,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function processHighlights(text, query, hasElasticHighlight) {
-        if (!text) return 'No content preview';
+        console.log('[processHighlights] Input:', { type: typeof text, hasElasticHighlight, isNull: text === null, isUndefined: text === undefined, isEmptyObj: typeof text === 'object' && text !== null && Object.keys(text).length === 0 });
+        
+        if (!text) {
+            console.log('[processHighlights] No text provided, returning fallback');
+            return 'No content preview';
+        }
+        
         let display = text;
         
-        if (typeof text === 'object') { 
-            // Handle array of highlights
-             display = Object.values(text).flat().join(' ... ');
+        if (typeof text === 'object') {
+            const values = Object.values(text).flat();
+            console.log('[processHighlights] Object highlight - keys:', Object.keys(text), 'values count:', values.length, 'joined length:', values.join(' ... ').length);
+            display = values.join(' ... ');
+            // If highlight object was empty or produced empty string, fallback
+            if (!display || display.trim() === '') {
+                console.log('[processHighlights] Empty highlight object, returning fallback');
+                return 'No content preview';
+            }
+        }
+        
+        if (typeof display !== 'string') {
+            console.log('[processHighlights] display is not a string:', typeof display);
+            display = String(display);
         }
         
         if (hasElasticHighlight) {
-            // ES returns <em> tags. We replace them with our highlight style
-             return display.replace(/<em>/g, '<em style="background:rgba(100,255,218,0.3); color:#fff; font-style:normal; padding:2px;">').replace(/<\/em>/g, '</em>');
+            // ES returns <em> tags for highlighting.
+            // First, protect ES <em> tags by replacing them with placeholders
+            display = display.replace(/<em>/g, '%%HL_START%%').replace(/<\/em>/g, '%%HL_END%%');
+            // Escape ALL HTML to prevent rendering of indexed HTML file content
+            display = escapeHtml(display);
+            // Restore ES highlight tags with styled versions
+            display = display.replace(/%%HL_START%%/g, '<em style="background:rgba(100,255,218,0.3); color:#fff; font-style:normal; padding:2px;">').replace(/%%HL_END%%/g, '</em>');
+            console.log('[processHighlights] Processed highlight, output length:', display.length);
+            return display;
         }
         
-        // Truncate if too long (simple approach)
-        if (display.length > 500) return display.substring(0, 500) + '...';
+        // For non-highlighted content, escape HTML and truncate
+        display = escapeHtml(display);
+        if (display.length > 500) display = display.substring(0, 500) + '...';
+        console.log('[processHighlights] Plain text output length:', display.length);
         return display;
     }
 });
